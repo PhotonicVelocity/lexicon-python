@@ -4,11 +4,14 @@ A lightweight Python client for the [Lexicon DJ](https://www.lexicondj.com/) API
 
 ## Features
 
-- `LexiconClient` with configurable host/port.
-- Helpers for fetching playlists (by tree, id, or path) with safe JSON handling.
-- Interactive `choose_playlist` prompt for quick CLI workflows.
-- Batched track metadata retrieval with optional parallelism.
-- Pure-Python implementation with minimal runtime dependencies (`requests`, `tqdm`).
+- Class `LexiconClient` with configurable host/port.
+- All GET requests for Playlists, Tracks, and Tags available
+- Handy helpers:
+    - Interactive `choose_playlist` prompt for fast CLI workflows.
+    - GET for all tracks can automatically retrieve all pages with `get_all`
+    - Batch function `get_track_batch` can retrieve full metadata for a list of tracks (including progress bar
+    for large retrievals)
+- Minimal dependencies (`requests`, `tqdm`) and a pure-Python implementation suitable for scripts or larger apps.
 
 ## Quickstart
 
@@ -33,26 +36,45 @@ A lightweight Python client for the [Lexicon DJ](https://www.lexicondj.com/) API
 ```python
 from lexicon import LexiconClient
 
-client = LexiconClient()
-selection = client.choose_playlist(show_counts=True)
+lexicon = LexiconClient()
+
+# Choose playlist interactively and fetch it's tracks
+selection = lexicon.choose_playlist(show_counts=True)
 if selection:
     path, playlist = selection
     print("Selected:", " / ".join(path))
-    print("Tracks reported:", playlist.get("numTracks"))
+    track_ids = set(playlist.get("trackIds", []))
+    print("Tracks reported: ", len(track_ids))
 
-    track_ids = playlist.get("trackIds", [])
-    tracks = client.get_track_data_batch(track_ids, max_workers=4)
+    tracks = lexicon.get_track_batch(track_ids, max_workers=5)
     for track in tracks:
         print(track["title"], "-", track["artist"])
 else:
     print("No playlist selected.")
+
+# Fetch the complete library in chunks of 250
+tracks = lexicon.get_tracks(limit=250, get_all=True) or []
+print(f"Fetched {len(tracks)} tracks")
+
+# Search within your library
+results = lexicon.search_tracks({"artist": "Daft Punk", "bpm": ">=120"}) or []
+print(f"Found {len(results)} matching tracks")
+
+# Inspect tags and categories
+tags_payload = lexicon.get_tags()
+    if tags_payload:
+        for category in tags_payload["categories"]:
+            print("Category:", category["label"])
+            for tag_id in category["tags"]:
+                tag = next((t for t in tags_payload["tags"] if t["id"] == tag_id), None)
+                print("->", tag["label"])
 ```
 
 See `examples/demo_lexicon.py` for a more complete walkthrough.
 
 ## Development
 
-- Run the test suite: `python -m unittest discover -s tests`
+- Run the test suite: `PYTHONPATH=src python -m unittest discover -s tests`
 - Style: keep the package pure Python, logging via `logging.getLogger(__name__)`, and prefer small, testable helpers.
 - Packaging metadata lives in `pyproject.toml` (see below).
 
