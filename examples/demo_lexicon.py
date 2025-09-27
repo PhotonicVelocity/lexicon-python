@@ -25,30 +25,25 @@ logging.basicConfig(level=logging.INFO)
 def main() -> None:
     lexicon = LexiconClient()
 
-    selection = lexicon.choose_playlist(flat=True, show_counts=True)
+    tracks = lexicon.get_tracks(limit=1500)
+    print(f"Fetched {len(tracks)} tracks")
+    
+    selection = lexicon.choose_playlist(flat=False, show_counts=True)
     if not selection:
         return
 
-    path, chosen = selection
+    playlist, path = selection
 
-    print(f"\nChosen playlist: {' -> '.join(path)} [id:{chosen.get('id')}] - {chosen.get('numTracks')} tracks")
-    return
-    playlist = lexicon.get_playlist(chosen["id"])
-    if not playlist:
-        print("Could not fetch playlist details.")
-        return
+    print(f"\nChosen playlist: {(' -> '.join(path) if path else "ROOT")} [id:{playlist.get('id')}] - {len(set(playlist.get('trackIds')))} tracks")
 
-    track_ids = playlist.get("trackIds", [])
+    track_ids = set(playlist.get("trackIds", []))
 
     if not track_ids:
         print("Playlist has no track IDs to fetch.")
         return
 
     print(f"Playlist contains {len(track_ids)} tracks. Fetching details for the first 5…")
-    tracks = lexicon.get_track_data_batch(
-        track_ids[:5],
-        max_workers=0,
-    )
+    tracks = lexicon.get_track_batch(track_ids[:5])
 
     for idx, track in enumerate(tracks, start=1):
         print(f"\nTrack {idx}:")
