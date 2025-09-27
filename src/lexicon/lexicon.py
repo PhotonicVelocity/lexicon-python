@@ -134,18 +134,24 @@ class LexiconClient:
     def get_playlist_by_path(
         self,
         playlist_path: Sequence[str],
-        playlist_type: Optional[int] = None,
+        playlist_type: int,
         *,
         timeout: Optional[int] = None,
     ) -> dict | None:
         """
         Get a playlist from the Lexicon library by its folder path. 
         Via ``/v1/playlist-by-path`` endpoint.
+
+        playlist_path: 
+            Sequence of folder/playlist names from the root.
+            E.g. ``["Genres", "Drum & Bass", "Dancefloor"]``.
+        
+        playlist_type: 
+            ``1=Folder``, ``2=Playlist``, ``3=Smartlist``.
         """
         endpoint = self._build_url("/v1/playlist-by-path")
         params: list[tuple[str, object]] = [("path", part) for part in playlist_path]
-        if playlist_type is not None:
-            params.append(("type", playlist_type))
+        params.append(("type", playlist_type))
 
         try:
             response = requests.get(
