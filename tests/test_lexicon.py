@@ -149,7 +149,7 @@ class LexiconApiTests(unittest.TestCase):
             return DummyErrorResponse(error_payload)
 
         with patch("lexicon.lexicon.requests.get", fake_get):
-            playlist = self.client.get_playlist_by_path(playlist_path)
+            playlist = self.client.get_playlist_by_path(playlist_path, playlist_type=2)
 
         self.assertIsNone(playlist)
 
