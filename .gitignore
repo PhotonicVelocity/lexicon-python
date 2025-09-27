@@ -15,8 +15,8 @@ venv/
 ENV/
 env/
 
-# Jupyter
-.ipynb_checkpoints/
+# Reference materials
+ref/*
 
 # VSCode
 .vscode/

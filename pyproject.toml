@@ -7,10 +7,11 @@ name = "lexicon-python"
 version = "0.1.0"
 description = "Python client for the Lexicon DJ API"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [
-  {name = "Garrison Burger"}
+  {name = "Garrison Burger", email = "burgerga123@gmail.com"}
 ]
 dependencies = [
   "requests>=2.31",
