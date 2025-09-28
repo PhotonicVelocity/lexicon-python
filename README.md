@@ -39,10 +39,11 @@ from lexicon import LexiconClient
 lexicon = LexiconClient()
 
 # Choose playlist interactively and fetch it's tracks
-selection = lexicon.choose_playlist(show_counts=True)
-if selection:
-    path, playlist = selection
-    print("Selected:", " / ".join(path))
+playlist = lexicon.choose_playlist(show_counts=True)
+if playlist:
+    path = lexicon.get_playlist_path(playlist) or []
+    if path:
+        print("Selected:", " / ".join(path))
     track_ids = set(playlist.get("trackIds", []))
     print("Tracks reported: ", len(track_ids))
 
