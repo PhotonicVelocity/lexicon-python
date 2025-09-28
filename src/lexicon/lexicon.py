@@ -185,7 +185,7 @@ class LexiconClient:
         folder: dict,
         input_func: Callable[[str], str] = input,
         show_counts: bool = False,
-    ) -> Optional[tuple[list[str], dict]]:
+    ) -> Optional[dict]:
         """Interactively choose an item within ``folder``.
 
         ``0`` backs out (or cancels at the root). ``S`` selects the current folder.
@@ -262,14 +262,17 @@ class LexiconClient:
             choice = input_func("\nSelect number (Enter: current folder, C: cancel)").strip()
 
             # Handle special inputs
+            #   Enter: select current folder
             if not choice:
                 playlist = self.get_playlist(current_folder.get("id")) # Fetch full details
-                return playlist, current_path
+                return playlist
             
+            #   C/c: cancel
             if choice.lower() == "c":
                 print("Selection cancelled.")
                 return None
             
+            #   0: back out
             if choice == "0":
                 if len(stack) > 1:
                     stack.pop()
@@ -303,7 +306,7 @@ class LexiconClient:
             # Playlist/Smartlist
             if selected_type in {2, 3}:
                 playlist = self.get_playlist(selected.get("id")) # Fetch full details
-                return playlist, new_path
+                return playlist
             
             # Folder
             elif selected_type == 1:
@@ -362,10 +365,10 @@ class LexiconClient:
         show_counts: bool = True,
         timeout: Optional[int] = None,
         input_func: Callable[[str], str] = input,
-    ) -> Optional[tuple[dict, list[str]]]:
+    ) -> Optional[dict]:
         """Fetch playlists and interactively choose one via stdin.
 
-        Returns a tuple of (playlist_dict, path) or ``None`` if the user cancels.
+        Returns a playlist dict or ``None`` if the user cancels.
 
         Parameters
         ----------
@@ -396,6 +399,53 @@ class LexiconClient:
         if selection is None:
             self._logger.info("No playlist selected.")
         return selection
+
+    def get_playlist_path(self, playlist_input: int | dict, *, timeout: Optional[int] = None) -> Optional[list[str]]:
+        """
+        Fetch the full folder path for a playlist grabbing parent playlists.
+        Input is either a playlist ID or a playlist dictionary.
+        Returns a list of folder/playlist names from root to the target playlist.
+        """
+        path = []
+        playlist_parent = None
+        current_playlist = None
+        current_name = None
+
+        if isinstance(playlist_input, dict):
+            current_playlist = playlist_input
+        elif isinstance(playlist_input, int):
+            playlist_id = playlist_input
+            current_playlist = self.get_playlist(playlist_id)
+        
+        if not current_playlist:
+            self._logger.warning("Invalid playlist input; must be ID or playlist dict.")
+            return None
+        
+        while True:
+            parent_id = current_playlist.get("parentId")
+            if parent_id is None:
+                # Reached root, stop
+                break
+
+            # Prepend current name to path
+            current_name = current_playlist.get("name", "(unnamed)")
+            if isinstance(current_name, str):
+                path.insert(0, current_name)
+            else:
+                self._logger.warning("Playlist has invalid name: %s", current_name)
+                return None
+            
+            # Fetch parent playlist and continue
+            if isinstance(parent_id, int):
+                current_playlist = self.get_playlist(parent_id)
+                if not current_playlist:
+                    self._logger.warning("Could not fetch parent playlist with ID %s", parent_id)
+                    return None
+            else:
+                self._logger.warning("Playlist has invalid parentId: %s", parent_id)
+                return None
+            
+        return path
 
     #endregion
 
@@ -483,7 +533,6 @@ class LexiconClient:
         while total_remaining is None or (total_remaining > 0 and get_all):
             page_params = list(params)
             page_params.append(("offset", next_offset))
-            print(page_params)  # DEBUG
 
             try:
                 response = requests.get(
@@ -618,25 +667,32 @@ class LexiconClient:
         track_ids: Iterable[int],
         *,
         max_workers: int = 5,
+        show_progress: bool = True,
         timeout: Optional[int] = None,
-    ) -> list[dict]:
+    ) -> list[dict] | None:
+        """Fetch metadata for a collection of tracks, optionally in parallel.
+
+        Defaults to making 5 requests in parallel. Set ``max_workers=0`` to fetch
+        one at a time. More than 5 workers doesn't seem to improve speed but
+        results may vary. Progress bars can be disabled with
+        ``show_progress=False``.
         """
-        Fetch metadata for a collection of tracks.
-        
-        Defaults to making 5 requests in parallel. 
-        Set ``max_workers=0`` to fetch one at a time.
-        More than 5 workers doesn't seem to improve speed but results may vary.
-        """
+
         track_ids = list(track_ids)
+
+        if any(not isinstance(tid, int) for tid in track_ids):
+            self._logger.warning("track_ids must be an iterable of integers.")
+            return None
+
         results: list[dict] = []
 
-        if not track_ids:
-            return results
-
         effective_timeout = timeout or self.default_timeout
-
+    
         if max_workers == 0:
-            for track_id in tqdm(track_ids, desc="Fetching tracks", unit=" tracks"):
+            iterable = track_ids
+            if show_progress:
+                iterable = tqdm(track_ids, desc="Fetching tracks", unit=" tracks")
+            for track_id in iterable:
                 info = self.get_track(track_id, timeout=effective_timeout)
                 if info:
                     results.append(info)
@@ -647,8 +703,15 @@ class LexiconClient:
                 executor.submit(self.get_track, track_id, timeout=effective_timeout): track_id
                 for track_id in track_ids
             }
-            with tqdm(total=len(futures), desc="Fetching tracks (parallel)", unit=" tracks") as pbar:
-                for future in as_completed(futures):
+
+            completed = as_completed(futures)
+            if show_progress:
+                progress = tqdm(total=len(futures), desc="Fetching tracks (parallel)", unit=" tracks")
+            else:
+                progress = None
+
+            try:
+                for future in completed:
                     track_id = futures[future]
                     try:
                         info = future.result()
@@ -657,7 +720,11 @@ class LexiconClient:
                     except Exception as exc:  # noqa: BLE001 - handle worker failures gracefully
                         self._logger.warning("Track %s failed during fetch: %s", track_id, exc)
                     finally:
-                        pbar.update(1)
+                        if progress:
+                            progress.update(1)
+            finally:
+                if progress:
+                    progress.close()
 
         return results
     
@@ -689,6 +756,8 @@ class LexiconClient:
 
         self._logger.warning("Response did not contain expected tags structure")
         return None
+
+    #endregion
 
 __all__ = [
     "DEFAULT_HOST",
