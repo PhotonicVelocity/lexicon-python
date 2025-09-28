@@ -13,7 +13,6 @@ if str(SRC_DIR) not in sys.path:
 
 from lexicon import LexiconClient  # noqa: E402  pylint: disable=wrong-import-position
 
-
 class DummyResponse:
     def __init__(self, payload):
         self._payload = payload
@@ -51,16 +50,17 @@ class LexiconApiTests(unittest.TestCase):
             "id": 1,
             "name": "ROOT",
             "type": "1",
+            "parentId": None,
             "playlists": [
-                {"id": 2, "name": "Folder 1", "type": "1", "playlists": [       # 1. 
-                    {"id": 5, "name": "Playlist 1", "type": "2"},                  # 1.
-                    {"id": 6, "name": "Smartlist 1", "type": "3"}                  # 2.  
+                {"id": 2, "name": "Folder 1", "type": "1", "parentId": 1, "playlists": [       # 1. 
+                    {"id": 5, "name": "Playlist 1", "type": "2", "parentId": 2},                  # 1.
+                    {"id": 6, "name": "Smartlist 1", "type": "3", "parentId": 2}                  # 2.  
                 ]},
-                {"id": 3, "name": "Playlist 2", "type": "2"},                   # 2.
-                {"id": 4, "name": "Folder 2", "type": "1", "playlists": [       # 3.
-                    {"id": 7, "name": "Playlist 3", "type": "2"},                   # 1.
-                    {"id": 8, "name": "Folder 3", "type": "1", "playlists": [       # 2.
-                        {"id": 9, "name": "Playlist 4", "type": "2"}                    # 1.
+                {"id": 3, "name": "Playlist 2", "type": "2", "parentId": 1},                   # 2.
+                {"id": 4, "name": "Folder 2", "type": "1", "parentId": 1, "playlists": [       # 3.
+                    {"id": 7, "name": "Playlist 3", "type": "2", "parentId": 4},                   # 1.
+                    {"id": 8, "name": "Folder 3", "type": "1", "parentId": 4, "playlists": [       # 2.
+                        {"id": 9, "name": "Playlist 4", "type": "2", "parentId": 8}                    # 1.
                     ]} 
                 ]},              
             ],
@@ -155,21 +155,23 @@ class LexiconApiTests(unittest.TestCase):
 
     def test_lexicon_tree_to_flat_list_builds_paths(self, tree=tree):
         flattened = self.client._flatten_tree(tree)
+
         self.assertEqual(
             flattened,
             {
                 "id": 1, 
                 "name": "ROOT", 
                 "type": "1", 
+                "parentId": None,
                 "playlists": [
-                    {"id": 2, "name": "Folder 1", "type": "2", "path": ["Folder 1"]},
-                    {"id": 5, "name": "Playlist 1", "type": "2", "path": ["Folder 1", "Playlist 1"]},
-                    {"id": 6, "name": "Smartlist 1", "type": "3", "path": ["Folder 1", "Smartlist 1"]},
-                    {"id": 3, "name": "Playlist 2", "type": "2", "path": ["Playlist 2"]},
-                    {"id": 4, "name": "Folder 2", "type": "2", "path": ["Folder 2"]},
-                    {"id": 7, "name": "Playlist 3", "type": "2", "path": ["Folder 2", "Playlist 3"]},
-                    {"id": 8, "name": "Folder 3", "type": "2", "path": ["Folder 2", "Folder 3"]},
-                    {"id": 9, "name": "Playlist 4", "type": "2", "path": ["Folder 2", "Folder 3", "Playlist 4"]},
+                    {"id": 2, "name": "Folder 1", "type": "2", "parentId": 1, "path": ["Folder 1"]},
+                    {"id": 5, "name": "Playlist 1", "type": "2", "parentId": 2, "path": ["Folder 1", "Playlist 1"]},
+                    {"id": 6, "name": "Smartlist 1", "type": "3", "parentId": 2, "path": ["Folder 1", "Smartlist 1"]},
+                    {"id": 3, "name": "Playlist 2", "type": "2", "parentId": 1, "path": ["Playlist 2"]},
+                    {"id": 4, "name": "Folder 2", "type": "2", "parentId": 1, "path": ["Folder 2"]},
+                    {"id": 7, "name": "Playlist 3", "type": "2", "parentId": 4, "path": ["Folder 2", "Playlist 3"]},
+                    {"id": 8, "name": "Folder 3", "type": "2", "parentId": 4, "path": ["Folder 2", "Folder 3"]},
+                    {"id": 9, "name": "Playlist 4", "type": "2", "parentId": 8, "path": ["Folder 2", "Folder 3", "Playlist 4"]},
                 ]
             }
         )
@@ -179,38 +181,61 @@ class LexiconApiTests(unittest.TestCase):
 
         with patch.object(self.client, "get_playlists", return_value=tree), \
                 patch.object(self.client, "get_playlist", side_effect=self.fake_playlist):
-            playlist, path = self.client.choose_playlist(flat=False, show_counts=False, input_func=lambda _: next(inputs))
+            playlist = self.client.choose_playlist(flat=False, show_counts=False, input_func=lambda _: next(inputs))
 
         self.assertIsNotNone(playlist)
-        self.assertEqual((playlist, path), ({"id": 7, "trackIds": [1, 2, 3]}, ["Folder 2", "Playlist 3"]))
+        self.assertEqual(playlist, {"id": 7, "trackIds": [1, 2, 3]})
 
     def test_choose_playlist_handles_folder_selection(self, tree=tree):
         inputs = iter(["1", ""])  # Navigate to Folder 1 -> Select Folder 1
 
         with patch.object(self.client, "get_playlists", return_value=tree), \
                 patch.object(self.client, "get_playlist", side_effect=self.fake_playlist):
-            path, chosen = self.client.choose_playlist(flat=False, show_counts=False, input_func=lambda _: next(inputs))
+            playlist = self.client.choose_playlist(flat=False, show_counts=False, input_func=lambda _: next(inputs))
 
-        self.assertIsNotNone(chosen)
-        self.assertEqual((path, chosen), ({"id": 2, "trackIds": [1, 2, 3]}, ["Folder 1"]))
+        self.assertIsNotNone(playlist)
+        self.assertEqual(playlist, {"id": 2, "trackIds": [1, 2, 3]})
 
     def test_choose_playlist_flat_selection(self, tree=tree):
         inputs = iter(["7"])  # Select Playlist 1 directly from flat list
 
         with patch.object(self.client, "get_playlists", return_value=tree), \
                 patch.object(self.client, "get_playlist", side_effect=self.fake_playlist):
-            path, chosen = self.client.choose_playlist(flat=True, show_counts=False, input_func=lambda _: next(inputs))
+            playlist = self.client.choose_playlist(flat=True, show_counts=False, input_func=lambda _: next(inputs))
 
-        self.assertIsNotNone(chosen)
-        self.assertEqual((path, chosen), ({"id": 8, "trackIds": [1, 2, 3]}, ["Folder 2", "Folder 3"]))
+        self.assertIsNotNone(playlist)
+        self.assertEqual(playlist, {"id": 8, "trackIds": [1, 2, 3]})
 
     def test_choose_playlist_handles_cancel(self, tree=tree):
-        inputs = iter(["3", "c"])  # Select Folder 2 then Cancel
+        inputs = iter(["3", "c"])  # Select Folder 2 then cancel
 
         with patch.object(self.client, "get_playlists", return_value=tree):
             result = self.client.choose_playlist(show_counts=False, input_func=lambda _: next(inputs))
-        
+
         self.assertIsNone(result)
+
+    def test_get_playlist_path_returns_correct_path(self, tree=tree):
+        id_index: dict[int, dict] = {}
+
+        def index_tree(node: dict):
+            id_index[node["id"]] = {k: v for k, v in node.items() if k != "playlists"}
+            for child in node.get("playlists") or []:
+                index_tree(child)
+
+        index_tree(tree)
+
+        with patch.object(self.client, "get_playlist", side_effect=lambda playlist_id: id_index.get(playlist_id)):
+            path = self.client.get_playlist_path(7)
+
+        self.assertEqual(path, ["Folder 2", "Playlist 3"])
+
+    def test_get_playlist_path_handles_missing_parent(self):
+        orphan = {"id": 42, "name": "Orphan", "parentId": 999}
+
+        with patch.object(self.client, "get_playlist", return_value=None):
+            path = self.client.get_playlist_path(orphan)
+
+        self.assertIsNone(path)
 
     def test_get_track_info_returns_full_track(self):
         track_payload = {
