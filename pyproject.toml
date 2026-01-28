@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lexicon-python"
-version = "0.1.2"
+version = "0.2.0"
 description = "Python client for the Lexicon DJ API"
 readme = "README.md"
 license = "MIT"
@@ -14,8 +14,9 @@ authors = [
   {name = "Garrison Burger", email = "burgerga123@gmail.com"}
 ]
 dependencies = [
+  "InquirerPy>=0.3",
   "requests>=2.31",
-  "tqdm>=4.0"
+  "typing_extensions>=4.0"
 ]
 
 [project.urls]
@@ -26,3 +27,17 @@ where = ["src"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.pydocstyle]
+convention = "numpy"
+
+[tool.coverage.run]
+omit = [
+  "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+]
