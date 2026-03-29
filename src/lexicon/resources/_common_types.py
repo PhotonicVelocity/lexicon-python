@@ -22,41 +22,65 @@ ValidationMode = Literal["off", "warn", "strict"]
 
 # --- Color Types and Normalization --- #
 Color = Literal[
-    "red_dark", "red", "red_light", "red_orange", "orange", "beige", "yellow_dark", "yellow",
-    "lime", "green_light", "green", "green_dark", "teal", "aqua", "aqua_dark", "blue_light",
-    "blue", "blue_dark", "blue_violet", "violet", "violet_light", "magenta", "magenta_dark",
-    "magenta_red", "grey_light", "grey_dark", "black", "white",
+    "red_dark",
+    "red",
+    "red_light",
+    "red_orange",
+    "orange",
+    "beige",
+    "yellow_dark",
+    "yellow",
+    "lime",
+    "green_light",
+    "green",
+    "green_dark",
+    "teal",
+    "aqua",
+    "aqua_dark",
+    "blue_light",
+    "blue",
+    "blue_dark",
+    "blue_violet",
+    "violet",
+    "violet_light",
+    "magenta",
+    "magenta_dark",
+    "magenta_red",
+    "grey_light",
+    "grey_dark",
+    "black",
+    "white",
 ]
 COLORS: tuple[Color, ...] = get_args(Color)
 COLOR_RGBS: tuple[tuple[int, int, int], ...] = (
-    (158,  15,   7), # red_dark
-    (230,  15,  13), # red
-    (242, 102,  92), # red_light
-    (239,  89,  15), # red_orange
-    (232, 137,  20), # orange
-    (255, 225, 148), # beige
-    (245, 208,   1), # yellow_dark
-    (245, 245,  10), # yellow
-    (186, 232,  22), # lime
-    (174, 245,  95), # green_light
-    (127, 231,  16), # green
-    ( 75, 140,   8), # green_dark
-    ( 20, 222, 120), # teal
-    ( 20, 222, 202), # aqua
-    (  7, 148, 134), # aqua_dark
-    ( 47, 168, 237), # blue_light
-    ( 14,  88, 222), # blue
-    (  0,  40, 171), # blue_dark
-    (132,   0, 255), # blue_violet
-    (170,  59, 255), # violet
-    (198, 140, 243), # violet_light
-    (230,  15, 222), # magenta
-    (170,   0, 188), # magenta_dark
-    (222,  17,  92), # magenta_red
-    (173, 173, 173), # grey_light
-    ( 92,  92,  92), # grey_dark
-    ( 48,  48,  48), # black
-    (255, 255, 255), # white
+    (158, 15, 7),  # red_dark
+    (230, 15, 13),  # red
+    (242, 102, 92),  # red_light
+    (239, 89, 15),  # red_orange
+    (232, 137, 20),  # orange
+    (255, 225, 148),  # beige
+    (245, 208, 1),  # yellow_dark
+    (245, 245, 10),  # yellow
+    (186, 232, 22),  # lime
+    (174, 245, 95),  # green_light
+    (127, 231, 16),  # green
+    (75, 140, 8),  # green_dark
+    (20, 222, 120),  # teal
+    (20, 222, 202),  # aqua
+    (7, 148, 134),  # aqua_dark
+    (47, 168, 237),  # blue_light
+    (14, 88, 222),  # blue
+    (0, 40, 171),  # blue_dark
+    (132, 0, 255),  # blue_violet
+    (170, 59, 255),  # violet
+    (198, 140, 243),  # violet_light
+    (230, 15, 222),  # magenta
+    (170, 0, 188),  # magenta_dark
+    (222, 17, 92),  # magenta_red
+    (173, 173, 173),  # grey_light
+    (92, 92, 92),  # grey_dark
+    (48, 48, 48),  # black
+    (255, 255, 255),  # white
 )
 
 
@@ -91,7 +115,11 @@ def _normalize_color(value: object) -> Color | None:
             return None
         if value in COLORS:
             return value
-        hex_match = re.match(r"^\s*#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})\s*$", value, flags=re.IGNORECASE)
+        hex_match = re.match(
+            r"^\s*#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})\s*$",
+            value,
+            flags=re.IGNORECASE,
+        )
         if hex_match:
             hex_value = hex_match.group(1)
             if len(hex_value) in (3, 4):
@@ -147,19 +175,19 @@ def _nearest_color(rgb: tuple[int, int, int]) -> Color:
 # --- ID Sequence Normalization --- #
 def _normalize_id_sequence(ids: int | Sequence[int] | object) -> list[int] | None:
     """Normalize single ID or sequence of IDs to a deduplicated list.
-    
+
     Parameters
     ----------
     ids
         Single integer ID or sequence of integer IDs.
-    
+
     Returns
     -------
     list[int] | None
         Deduplicated list of valid IDs (>= 1), or None if:
         - Input is not int or sequence (or is str/bytes)
         - No valid IDs found (all < 1)
-    
+
     Notes
     -----
     Used for normalizing track IDs, tag IDs, and similar integer sequences.
@@ -172,7 +200,9 @@ def _normalize_id_sequence(ids: int | Sequence[int] | object) -> list[int] | Non
     else:
         return None
 
-    valid_ids = [id_val for id_val in id_list if isinstance(id_val, int) and id_val >= 1]
+    valid_ids = [
+        id_val for id_val in id_list if isinstance(id_val, int) and id_val >= 1
+    ]
     if not valid_ids:
         return None
 

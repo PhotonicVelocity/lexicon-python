@@ -44,7 +44,9 @@ class TagCategoriesTests(unittest.TestCase):
             self.assertIsNone(self.categories.list())
 
     def test_list_success(self):
-        with patch.object(self.categories, "_get", return_value={"data": {"categories": [{"id": 1}]}}):
+        with patch.object(
+            self.categories, "_get", return_value={"data": {"categories": [{"id": 1}]}}
+        ):
             self.assertEqual(self.categories.list(), [{"id": 1}])
 
     def test_add_invalid_label(self):
@@ -58,13 +60,21 @@ class TagCategoriesTests(unittest.TestCase):
         self.assertIsNone(self.categories.add("", validation="off"))
 
     def test_add_invalid_color_strict(self):
-        with patch("lexicon.resources.tag_categories._normalize_color", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tag_categories._normalize_color",
+            side_effect=ValueError("bad"),
+        ):
             with self.assertRaises(ValueError):
                 self.categories.add("Label", color="nope", validation="strict")
 
     def test_add_invalid_color_warn(self):
-        with patch("lexicon.resources.tag_categories._normalize_color", side_effect=ValueError("bad")):
-            self.assertIsNone(self.categories.add("Label", color="nope", validation="warn"))
+        with patch(
+            "lexicon.resources.tag_categories._normalize_color",
+            side_effect=ValueError("bad"),
+        ):
+            self.assertIsNone(
+                self.categories.add("Label", color="nope", validation="warn")
+            )
 
     def test_add_response_not_dict(self):
         with patch.object(self.categories, "_post", return_value=[]):
@@ -82,7 +92,9 @@ class TagCategoriesTests(unittest.TestCase):
 
     def test_add_success_with_color(self):
         response = {"data": {"id": 3}}
-        with patch.object(self.categories, "_post", return_value=response) as mocked_post:
+        with patch.object(
+            self.categories, "_post", return_value=response
+        ) as mocked_post:
             result = self.categories.add("Label", color="red")
         self.assertEqual(result, {"id": 3})
         payload = mocked_post.call_args.kwargs.get("json")
@@ -112,11 +124,19 @@ class TagCategoriesTests(unittest.TestCase):
         self.assertIsNone(self.categories.update(1, label="", validation="off"))
 
     def test_update_invalid_color_warn(self):
-        with patch("lexicon.resources.tag_categories._normalize_color", side_effect=ValueError("bad")):
-            self.assertIsNone(self.categories.update(1, color="nope", validation="warn"))
+        with patch(
+            "lexicon.resources.tag_categories._normalize_color",
+            side_effect=ValueError("bad"),
+        ):
+            self.assertIsNone(
+                self.categories.update(1, color="nope", validation="warn")
+            )
 
     def test_update_invalid_color_strict(self):
-        with patch("lexicon.resources.tag_categories._normalize_color", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tag_categories._normalize_color",
+            side_effect=ValueError("bad"),
+        ):
             with self.assertRaises(ValueError):
                 self.categories.update(1, color="nope", validation="strict")
 
@@ -144,7 +164,9 @@ class TagCategoriesTests(unittest.TestCase):
 
     def test_update_with_color_and_tags(self):
         response = {"id": 2}
-        with patch.object(self.categories, "_patch", return_value=response) as mocked_patch:
+        with patch.object(
+            self.categories, "_patch", return_value=response
+        ) as mocked_patch:
             result = self.categories.update(1, color="red", tags=[1, 2])
         self.assertEqual(result, {"id": 2})
         payload = mocked_patch.call_args.kwargs.get("json")

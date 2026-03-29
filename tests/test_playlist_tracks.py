@@ -38,7 +38,9 @@ class PlaylistTracksTests(unittest.TestCase):
         client = DummyClient()
         self.tracks = Tracks(client)  # type: ignore[arg-type]
         self.playlists = Playlists(client)  # type: ignore[arg-type]
-        self.playlist_tracks = PlaylistTracks(client, tracks=self.tracks, playlists=self.playlists)
+        self.playlist_tracks = PlaylistTracks(
+            client, tracks=self.tracks, playlists=self.playlists
+        )
 
     def test_list_invalid_playlist_id(self):
         self.assertIsNone(self.playlist_tracks.list(0, validation="warn"))
@@ -52,7 +54,9 @@ class PlaylistTracksTests(unittest.TestCase):
             self.assertIsNone(self.playlist_tracks.list(1))
 
     def test_list_track_ids(self):
-        with patch.object(self.playlists, "get", return_value={"trackIds": [1, "bad", 2]}):
+        with patch.object(
+            self.playlists, "get", return_value={"trackIds": [1, "bad", 2]}
+        ):
             self.assertEqual(self.playlist_tracks.list(1), [1, 2])
 
     def test_list_track_ids_missing(self):
@@ -75,8 +79,12 @@ class PlaylistTracksTests(unittest.TestCase):
             self.assertIsNone(self.playlist_tracks.get(1))
 
     def test_get_tracks(self):
-        with patch.object(self.playlist_tracks, "list", return_value=[1, 2]), \
-                patch.object(self.tracks, "get_many", return_value=[{"id": 1}, {"id": 2}]) as mocked_get_many:
+        with (
+            patch.object(self.playlist_tracks, "list", return_value=[1, 2]),
+            patch.object(
+                self.tracks, "get_many", return_value=[{"id": 1}, {"id": 2}]
+            ) as mocked_get_many,
+        ):
             result = self.playlist_tracks.get(1)
         self.assertEqual(result, [{"id": 1}, {"id": 2}])
         mocked_get_many.assert_called_once()
@@ -107,7 +115,9 @@ class PlaylistTracksTests(unittest.TestCase):
             self.assertTrue(self.playlist_tracks.add(1, [1, 2], validation="off"))
 
     def test_add_success_with_index(self):
-        with patch.object(self.playlist_tracks, "_patch", return_value={}) as mocked_patch:
+        with patch.object(
+            self.playlist_tracks, "_patch", return_value={}
+        ) as mocked_patch:
             self.assertTrue(self.playlist_tracks.add(1, [1], index=0, validation="off"))
         payload = mocked_patch.call_args.kwargs.get("json")
         self.assertEqual(payload.get("index"), 0)
@@ -152,8 +162,10 @@ class PlaylistTracksTests(unittest.TestCase):
 
     def test_update_existing_remove_fail(self):
         playlist = {"type": "2", "trackIds": [1]}
-        with patch.object(self.playlists, "get", return_value=playlist), \
-                patch.object(self.playlist_tracks, "remove", return_value=False):
+        with (
+            patch.object(self.playlists, "get", return_value=playlist),
+            patch.object(self.playlist_tracks, "remove", return_value=False),
+        ):
             self.assertFalse(self.playlist_tracks.update(1, [2]))
 
     def test_update_playlist_missing(self):
@@ -167,9 +179,11 @@ class PlaylistTracksTests(unittest.TestCase):
 
     def test_update_success(self):
         playlist = {"type": "2", "trackIds": [1]}
-        with patch.object(self.playlists, "get", return_value=playlist), \
-                patch.object(self.playlist_tracks, "remove", return_value=True), \
-                patch.object(self.playlist_tracks, "add", return_value=True):
+        with (
+            patch.object(self.playlists, "get", return_value=playlist),
+            patch.object(self.playlist_tracks, "remove", return_value=True),
+            patch.object(self.playlist_tracks, "add", return_value=True),
+        ):
             self.assertTrue(self.playlist_tracks.update(1, [2], validation="warn"))
 
     def test_update_invalid_track_ids_warn(self):

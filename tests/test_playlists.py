@@ -108,11 +108,15 @@ class PlaylistsTests(unittest.TestCase):
             self.assertIsNone(self.playlists.list())
 
     def test_list_missing_root(self):
-        with patch.object(self.playlists, "_get", return_value={"data": {"playlists": []}}):
+        with patch.object(
+            self.playlists, "_get", return_value={"data": {"playlists": []}}
+        ):
             self.assertIsNone(self.playlists.list())
 
     def test_list_missing_list(self):
-        with patch.object(self.playlists, "_get", return_value={"data": {"playlists": {}}}):
+        with patch.object(
+            self.playlists, "_get", return_value={"data": {"playlists": {}}}
+        ):
             self.assertIsNone(self.playlists.list())
 
     def test_list_returns_root(self):
@@ -165,25 +169,41 @@ class PlaylistsTests(unittest.TestCase):
             self.playlists.add("Name", playlist_type="nope", validation="strict")  # type: ignore[arg-type]
 
     def test_add_invalid_type_warn(self):
-        self.assertIsNone(self.playlists.add("Name", playlist_type="nope", validation="warn"))  # type: ignore[arg-type]
+        self.assertIsNone(
+            self.playlists.add("Name", playlist_type="nope", validation="warn")
+        )  # type: ignore[arg-type]
 
     def test_add_invalid_parent(self):
-        self.assertIsNone(self.playlists.add("Name", playlist_type="2", parent_id=0, validation="warn"))
+        self.assertIsNone(
+            self.playlists.add(
+                "Name", playlist_type="2", parent_id=0, validation="warn"
+            )
+        )
 
     def test_add_invalid_parent_strict(self):
         with self.assertRaises(ValueError):
-            self.playlists.add("Name", playlist_type="2", parent_id=0, validation="strict")
+            self.playlists.add(
+                "Name", playlist_type="2", parent_id=0, validation="strict"
+            )
 
     def test_add_invalid_smartlist(self):
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value=None):
+        with patch(
+            "lexicon.resources.playlists._normalize_smartlist", return_value=None
+        ):
             self.assertIsNone(
-                self.playlists.add("Name", playlist_type="3", smartlist={"bad": 1}, validation="warn")
+                self.playlists.add(
+                    "Name", playlist_type="3", smartlist={"bad": 1}, validation="warn"
+                )
             )
 
     def test_add_invalid_smartlist_strict(self):
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value=None):
+        with patch(
+            "lexicon.resources.playlists._normalize_smartlist", return_value=None
+        ):
             with self.assertRaises(ValueError):
-                self.playlists.add("Name", playlist_type="3", smartlist={"bad": 1}, validation="strict")
+                self.playlists.add(
+                    "Name", playlist_type="3", smartlist={"bad": 1}, validation="strict"
+                )
 
     def test_add_response_not_dict(self):
         with patch.object(self.playlists, "_post", return_value=[]):
@@ -195,9 +215,16 @@ class PlaylistsTests(unittest.TestCase):
 
     def test_add_with_parent_and_smartlist(self):
         response = {"data": {"id": 11}}
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value={"rules": []}), \
-                patch.object(self.playlists, "_post", return_value=response) as mocked_post:
-            result = self.playlists.add("Name", playlist_type="3", parent_id=2, smartlist={"rules": []})
+        with (
+            patch(
+                "lexicon.resources.playlists._normalize_smartlist",
+                return_value={"rules": []},
+            ),
+            patch.object(self.playlists, "_post", return_value=response) as mocked_post,
+        ):
+            result = self.playlists.add(
+                "Name", playlist_type="3", parent_id=2, smartlist={"rules": []}
+            )
         self.assertEqual(result, 11)
         payload = mocked_post.call_args.kwargs.get("json")
         self.assertEqual(payload.get("parentId"), 2)
@@ -251,13 +278,19 @@ class PlaylistsTests(unittest.TestCase):
             self.playlists.update(1, position=-1, validation="strict")
 
     def test_update_invalid_smartlist_strict(self):
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value=None):
+        with patch(
+            "lexicon.resources.playlists._normalize_smartlist", return_value=None
+        ):
             with self.assertRaises(ValueError):
                 self.playlists.update(1, smartlist={"bad": 1}, validation="strict")
 
     def test_update_invalid_smartlist_warn(self):
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value=None):
-            self.assertIsNone(self.playlists.update(1, smartlist={"bad": 1}, validation="warn"))
+        with patch(
+            "lexicon.resources.playlists._normalize_smartlist", return_value=None
+        ):
+            self.assertIsNone(
+                self.playlists.update(1, smartlist={"bad": 1}, validation="warn")
+            )
 
     def test_update_response_not_dict(self):
         with patch.object(self.playlists, "_patch", return_value=[]):
@@ -269,9 +302,18 @@ class PlaylistsTests(unittest.TestCase):
 
     def test_update_with_parent_position_smartlist(self):
         response = {"data": {"playlist": {"id": 1, "trackIds": []}}}
-        with patch("lexicon.resources.playlists._normalize_smartlist", return_value={"rules": []}), \
-                patch.object(self.playlists, "_patch", return_value=response) as mocked_patch:
-            result = self.playlists.update(1, parent_id=2, position=1, smartlist={"rules": []})
+        with (
+            patch(
+                "lexicon.resources.playlists._normalize_smartlist",
+                return_value={"rules": []},
+            ),
+            patch.object(
+                self.playlists, "_patch", return_value=response
+            ) as mocked_patch,
+        ):
+            result = self.playlists.update(
+                1, parent_id=2, position=1, smartlist={"rules": []}
+            )
         self.assertEqual(result.get("id"), 1)
         payload = mocked_patch.call_args.kwargs.get("json")
         self.assertEqual(payload.get("parentId"), 2)
@@ -315,7 +357,9 @@ class PlaylistsTests(unittest.TestCase):
             self.assertTrue(self.playlists.delete([1, 2], validation="off"))
 
     def test_get_by_path_invalid_path(self):
-        self.assertIsNone(self.playlists.get_by_path([""], playlist_type="2", validation="warn"))
+        self.assertIsNone(
+            self.playlists.get_by_path([""], playlist_type="2", validation="warn")
+        )
 
     def test_get_by_path_invalid_path_strict(self):
         with self.assertRaises(ValueError):
@@ -323,10 +367,16 @@ class PlaylistsTests(unittest.TestCase):
 
     def test_get_by_path_invalid_type_strict(self):
         with self.assertRaises(ValueError):
-            self.playlists.get_by_path(["Genres"], playlist_type="nope", validation="strict")  # type: ignore[arg-type]
+            self.playlists.get_by_path(
+                ["Genres"], playlist_type="nope", validation="strict"
+            )  # type: ignore[arg-type]
 
     def test_get_by_path_invalid_type_warn(self):
-        self.assertIsNone(self.playlists.get_by_path(["Genres"], playlist_type="nope", validation="warn"))  # type: ignore[arg-type]
+        self.assertIsNone(
+            self.playlists.get_by_path(
+                ["Genres"], playlist_type="nope", validation="warn"
+            )
+        )  # type: ignore[arg-type]
 
     def test_get_by_path_response_not_dict(self):
         with patch.object(self.playlists, "_get", return_value=[]):
@@ -348,23 +398,33 @@ class PlaylistsTests(unittest.TestCase):
 
     def test_choose_selection_not_dict(self):
         tree = {"id": 1, "name": "ROOT"}
-        with patch.object(self.playlists, "list", return_value=tree), \
-                patch("lexicon.resources.playlists.choose_playlist", return_value=None):
+        with (
+            patch.object(self.playlists, "list", return_value=tree),
+            patch("lexicon.resources.playlists.choose_playlist", return_value=None),
+        ):
             self.assertIsNone(self.playlists.choose())
 
     def test_choose_selection_without_id(self):
         tree = {"id": 1, "name": "ROOT"}
         selection = {"name": "ROOT"}
-        with patch.object(self.playlists, "list", return_value=tree), \
-                patch("lexicon.resources.playlists.choose_playlist", return_value=selection):
+        with (
+            patch.object(self.playlists, "list", return_value=tree),
+            patch(
+                "lexicon.resources.playlists.choose_playlist", return_value=selection
+            ),
+        ):
             result = self.playlists.choose()
         self.assertEqual(result, selection)
 
     def test_choose_returns_payload(self):
         tree = {"id": 1, "name": "ROOT"}
-        with patch.object(self.playlists, "list", return_value=tree), \
-                patch("lexicon.resources.playlists.choose_playlist", return_value={"id": 2}) as mocked_choose, \
-                patch.object(self.playlists, "get", return_value={"id": 2}) as mocked_get:
+        with (
+            patch.object(self.playlists, "list", return_value=tree),
+            patch(
+                "lexicon.resources.playlists.choose_playlist", return_value={"id": 2}
+            ) as mocked_choose,
+            patch.object(self.playlists, "get", return_value={"id": 2}) as mocked_get,
+        ):
             result = self.playlists.choose()
         self.assertEqual(result, {"id": 2})
         mocked_choose.assert_called_once()

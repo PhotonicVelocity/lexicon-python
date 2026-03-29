@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Optional, Sequence, cast
 
 from .base import Resource
-from ._common_types import ValidationMode, _normalize_color, _normalize_id_sequence, _normalize_id_sequence
+from ._common_types import (
+    ValidationMode,
+    _normalize_color,
+    _normalize_id_sequence,
+)
 from .tag_categories_types import TagCategoryResponse
 
 
@@ -77,7 +81,7 @@ class TagCategories(Resource):
             if validation == "warn":
                 self._logger.warning("Invalid label for add: %s", label)
             return None
-        
+
         if color is not None:
             try:
                 normalized_color = _normalize_color(color)
@@ -106,7 +110,10 @@ class TagCategories(Resource):
         if isinstance(response, dict) and "id" in response:
             # This is how the API actually behaves.
             return cast(TagCategoryResponse, response)
-        self._logger.warning("Create tag category response missing expected data. Response was %s", response)
+        self._logger.warning(
+            "Create tag category response missing expected data. Response was %s",
+            response,
+        )
         return None
 
     def update(
@@ -148,14 +155,14 @@ class TagCategories(Resource):
             if validation == "warn":  # pragma: no branch - strict raises above
                 self._logger.warning("Invalid category_id for update: %s", category_id)
                 return None
-        
+
         if label is not None and (not isinstance(label, str) or not label.strip()):
             if validation == "strict":
                 raise ValueError(f"Invalid label: {label}")
             if validation == "warn":
                 self._logger.warning("Invalid label for update: %s", label)
             return None
-        
+
         if color is not None:
             try:
                 normalized_color = _normalize_color(color)
@@ -236,11 +243,15 @@ class TagCategories(Resource):
                 if validation == "strict":
                     raise ValueError(f"Invalid category_ids: {category_ids}")
                 if validation == "warn":  # pragma: no branch - strict raises above
-                    self._logger.warning("Invalid category_ids for delete: %s", category_ids)
+                    self._logger.warning(
+                        "Invalid category_ids for delete: %s", category_ids
+                    )
                     return False
 
         for category_id in ids:
-            response = self._delete("/tag-category", json={"id": category_id}, timeout=timeout)
+            response = self._delete(
+                "/tag-category", json={"id": category_id}, timeout=timeout
+            )
             if response is None:
                 return False
         return True

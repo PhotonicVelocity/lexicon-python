@@ -27,7 +27,9 @@ class Resource:
         json: Optional[dict[str, Any]] = None,
         timeout: Optional[int] = None,
     ) -> Optional[dict[str, Any] | list[Any]]:
-        return self._client.request(method, path, params=params, json=json, timeout=timeout)
+        return self._client.request(
+            method, path, params=params, json=json, timeout=timeout
+        )
 
     def _get(
         self,

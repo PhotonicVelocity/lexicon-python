@@ -12,9 +12,11 @@ from typing_extensions import ReadOnly
 
 class TagResponse(TypedDict, total=False):
     """Readonly tag dict returned by tag endpoints."""
+
     id: ReadOnly[int]
     label: ReadOnly[str]
     categoryId: ReadOnly[int]
     position: ReadOnly[int]
+
 
 __all__ = ["TagResponse"]
