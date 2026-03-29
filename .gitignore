@@ -41,3 +41,6 @@ ref/*
 
 # Output files
 output/
+
+# Cursor
+.cursor/
