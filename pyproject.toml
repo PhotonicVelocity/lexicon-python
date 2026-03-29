@@ -19,6 +19,16 @@ dependencies = [
   "typing_extensions>=4.0"
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "ipython>=8.12.3",
+]
+
 [project.urls]
 Homepage = "https://github.com/photonicvelocity/lexicon-python"
 
@@ -27,6 +37,10 @@ where = ["src"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.uv]
+# Dev dependencies are specified in [dependency-groups]
+default-groups = ["dev"]
 
 [tool.pydocstyle]
 convention = "numpy"
