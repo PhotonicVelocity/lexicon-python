@@ -305,9 +305,67 @@ For full payload schemas and endpoint details, refer to the Lexicon API docs:
 
 ## Development
 
+### Prerequisites
+
+- Python 3.9+
+- [uv](https://docs.astral.sh/uv/) (used for dependency management and running tools)
+
+### Setup
+
 ```bash
-./.venv/bin/python -m pytest --cov --cov-branch --cov-report=term-missing
+git clone https://github.com/photonicvelocity/lexicon-python.git
+cd lexicon-python
+uv sync --dev
 ```
+
+This installs all runtime and dev dependencies into a local virtual environment
+managed by `uv`. The lockfile (`uv.lock`) is checked in to ensure reproducible
+installs.
+
+### Running Tests
+
+```bash
+make run-tests          # run tests
+```
+
+### Linting and Formatting
+
+The project uses [ruff](https://docs.astral.sh/ruff/) for both linting and
+formatting.
+
+`make test` runs the full suite: format, lint (with auto-fix), then tests.
+`make fix` runs all auto-fixers (lint + format) without running tests.
+
+```bash
+make test               # format-fix → lint-fix → format-check → lint-check → tests
+make fix                # lint-fix → format-fix
+make clean              # remove __pycache__, .pytest_cache, .ruff_cache, etc.
+```
+
+If you want to run the linters or formatters manually, you can use the following commands:
+
+```bash
+make lint-check         # check for lint issues
+make lint-fix           # auto-fix lint issues
+make format-check       # check formatting
+make format-fix         # auto-fix formatting
+```
+
+### CI
+
+GitHub Actions runs on every push to `main` and on pull requests
+targeting those branches. The pipeline includes:
+
+- **Tests** across Python 3.9, 3.10, 3.11, and 3.12
+- **Lint and format checks** via ruff on Python 3.12
+
+Before opening a PR, make sure `make test` passes locally.
+
+### Pull Requests
+
+A PR template is provided at `.github/pull_request_template.md`. When opening a
+PR, fill in the description, check the relevant change-type boxes, and confirm
+testing/checklist items.
 
 ## License
 

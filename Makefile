@@ -11,13 +11,9 @@ help:
 	@echo "  make all         - Same as 'make check'"
 	@echo "  make clean       - Clean cache files"
 
-# Run tests
-run-tests:
-	uv run pytest
-
 # Run tests with coverage
-test-cov:
-	uv run pytest --cov=src --cov-report=term-missing
+run-tests:
+	uv run pytest --cov=src --cov-branch --cov-report=term-missing 
 
 # Run linter
 lint-check:
