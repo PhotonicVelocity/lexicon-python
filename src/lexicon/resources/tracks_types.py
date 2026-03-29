@@ -190,24 +190,24 @@ def _normalize_filters(
     filter_payload: dict[FilterField, object] = {}
     invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in filters.items():
-        if field not in FILTER_FIELDS:
-            invalid_fields.append(str(field))
+    for filter_field, value in filters.items():
+        if filter_field not in FILTER_FIELDS:
+            invalid_fields.append(str(filter_field))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if filter_field in BOOL_FIELDS:
                 value = _normalize_bool(value, context="filter")  # pragma: no cover
-            if field in TEXT_FIELDS:
+            if filter_field in TEXT_FIELDS:
                 value = _normalize_text(value, context="filter")
-            if field in NUMBER_FIELDS:
+            if filter_field in NUMBER_FIELDS:
                 value = _normalize_number(value, context="filter")
-            if field in DATE_FIELDS:
+            if filter_field in DATE_FIELDS:
                 value = _normalize_date(value, context="filter")
-            if field == "tags":
+            if filter_field == "tags":
                 value = _normalize_tag_filter(value)
-            filter_payload[field] = value
+            filter_payload[filter_field] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{filter_field}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
@@ -259,22 +259,22 @@ def _normalize_edits(
     edits_payload: dict[TrackEditField, object] = {}
     invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in edits.items():
-        if field not in TRACK_EDIT_FIELDS:
-            invalid_fields.append(str(field))
+    for edit_field, value in edits.items():
+        if edit_field not in TRACK_EDIT_FIELDS:
+            invalid_fields.append(str(edit_field))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if edit_field in BOOL_FIELDS:
                 value = _normalize_bool(value, context="edit")
-            if field in TEXT_FIELDS:
+            if edit_field in TEXT_FIELDS:
                 value = _normalize_text(value, context="edit")
-            if field in NUMBER_FIELDS:
+            if edit_field in NUMBER_FIELDS:
                 value = _normalize_number(value, context="edit")
-            if field in DATE_FIELDS:
+            if edit_field in DATE_FIELDS:
                 value = _normalize_date(value, context="edit")  # pragma: no cover
-            if field == "tags":
+            if edit_field == "tags":
                 value = _normalize_tags(value)
-            if field == "cuepoints":
+            if edit_field == "cuepoints":
                 value, cue_errors = _normalize_cuepoints(value)
                 if cue_errors.fatal:
                     value_errors.extend(
@@ -288,7 +288,7 @@ def _normalize_edits(
                     value_errors.extend(
                         [f"cuepoints: {err}" for err in cue_errors.partial]
                     )
-            if field == "tempomarkers":
+            if edit_field == "tempomarkers":
                 value, tempo_errors = _normalize_tempomarkers(value)
                 if tempo_errors.fatal:
                     value_errors.extend(
@@ -298,9 +298,9 @@ def _normalize_edits(
                     value_errors.extend(
                         [f"tempomarkers: {err}" for err in tempo_errors.dropped]
                     )
-            edits_payload[field] = value
+            edits_payload[edit_field] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{edit_field}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None

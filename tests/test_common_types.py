@@ -8,7 +8,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from lexicon.resources._common_types import (
+from lexicon.resources._common_types import (  # noqa: E402
     _normalize_color,
     _nearest_color,
     _normalize_id_sequence,
