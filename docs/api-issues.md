@@ -31,6 +31,7 @@
 - `GET /v1/search/tracks` does not support filtering for tracks with no tags (`tags=NONE` returns all tracks instead of only untagged tracks).
 - `GET /v1/playlist` can return duplicate `trackIds` when the playlist is a folder; clients may need to deduplicate.
 - `Cuepoint` schema has undocumented `activeLoop` item.
+- `GET /v1/search/tracks` crashes with `Cannot read properties of undefined (reading 'toUpperCase')` when a sort object is missing the `dir` key (e.g. `{"field": "dateAdded"}`). The `dir` key must always be provided (`"asc"` or `"desc"`).
 
 ## Undocumented Fields in API Responses
 - `GET /v1/track` 

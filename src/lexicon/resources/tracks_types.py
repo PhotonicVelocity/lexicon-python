@@ -228,8 +228,7 @@ def _normalize_sorts(
                     value_errors.append(f"Invalid sort direction for {field}: {direction}")
                     direction = None
             entry: dict[str, str] = {"field": field}
-            if direction:
-                entry["dir"] = direction
+            entry["dir"] = direction or "asc"
             sort_payload.append(entry)
 
     invalid_fields = invalid_fields if invalid_fields else None
@@ -376,8 +375,10 @@ def _normalize_tag_filter(
 def _normalize_tags(
     value: object,
 ) -> list[int]:
-    """Normalize tag ID list."""
+    """Normalize tag ID list. An empty list clears all tags."""
     if isinstance(value, list):
+        if len(value) == 0:
+            return []
         tag_ids = {tag_id for tag_id in value if isinstance(tag_id, int) and tag_id >= 1}
         if tag_ids:
             return list(tag_ids)

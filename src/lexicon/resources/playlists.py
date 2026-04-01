@@ -399,18 +399,13 @@ class Playlists(Resource):
         if not isinstance(response, dict):
             return None
 
-        data = response.get("data") if isinstance(response, dict) else None
-        playlist = data.get("playlist") if isinstance(data, dict) else None
-        if isinstance(playlist, dict):
-            track_ids = playlist.get("trackIds")
-            if isinstance(track_ids, list):
-                deduped = unique_in_order(track_ids)  # Needed since API returns concatenated tracklist for folders
-                if len(deduped) != len(track_ids):  # pragma: no branch - exercised by tests
-                    playlist = dict(playlist)
-                    playlist["trackIds"] = deduped
-            return cast(PlaylistResponse, playlist)
-        self._logger.warning("Update playlist response missing expected playlist data.")
-        return None
+        # Response shape varies: {"id": ...}, {"data": {"id": ...}}, or {}
+        # Re-fetch to get the full updated playlist, falling back to input playlist_id
+        updated_id = response.get("id")
+        if not isinstance(updated_id, int):
+            data = response.get("data")
+            updated_id = data.get("id") if isinstance(data, dict) else playlist_id
+        return self.get(updated_id, validation="off", timeout=timeout)
 
     def delete(
         self,

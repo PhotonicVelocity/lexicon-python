@@ -60,24 +60,23 @@ COLOR_RGBS: tuple[tuple[int, int, int], ...] = (
 )
 
 
-def _normalize_color(value: object) -> Color | None:
-    """Normalize color inputs to the nearest Lexicon color name.
+def _parse_color_rgb(value: object) -> tuple[int, int, int] | None:
+    """Parse a color input into an RGB tuple.
 
     Parameters
     ----------
     value
         Color input. Supported forms:
-        - ``None`` or the string ``"None"`` (case-insensitive)
-        - Lexicon color names (see ``COLORS``)
-        - Various RGB/RGBA forms (alpha is dropped)
-          - Hex strings (``#RGB``, ``#RGBA``, ``#RRGGBB``, ``#RRGGBBAA``)
-          - RGB/RGBA tuples or lists (ints 0-255 or floats 0-1)
-          - Packed RGB integer (``0xRRGGBB``, ``0xAARRGGBB``)
+        - ``None`` or the string ``"None"`` (case-insensitive) -> returns None
+        - Lexicon color names (see ``COLORS``) -> looked up from COLOR_RGBS
+        - Hex strings (``#RGB``, ``#RGBA``, ``#RRGGBB``, ``#RRGGBBAA``)
+        - RGB/RGBA tuples or lists (ints 0-255 or floats 0-1)
+        - Packed RGB integer (``0xRRGGBB``, ``0xAARRGGBB``)
 
     Returns
     -------
-    Color or None
-        The nearest Lexicon color name, or ``None`` when the input is ``None``.
+    tuple[int, int, int] or None
+        RGB tuple (0-255), or ``None`` when the input is ``None``.
 
     Raises
     ------
@@ -90,7 +89,7 @@ def _normalize_color(value: object) -> Color | None:
         if value.strip().lower() == "none":
             return None
         if value in COLORS:
-            return value
+            return COLOR_RGBS[COLORS.index(value)]
         hex_match = re.match(r"^\s*#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})\s*$", value, flags=re.IGNORECASE)
         if hex_match:
             hex_value = hex_match.group(1)
@@ -98,12 +97,11 @@ def _normalize_color(value: object) -> Color | None:
                 hex_value = "".join(ch * 2 for ch in hex_value)
             if len(hex_value) == 8:
                 hex_value = hex_value[:6]
-            rgb = (
+            return (
                 int(hex_value[0:2], 16),
                 int(hex_value[2:4], 16),
                 int(hex_value[4:6], 16),
             )
-            return _nearest_color(rgb)
         raise ValueError(f"Unsupported string input {value!r}")
 
     if isinstance(value, int):
@@ -111,8 +109,7 @@ def _normalize_color(value: object) -> Color | None:
             raise ValueError(f"Negative packed int {value!r}")
         if value > 0xFFFFFF:
             value = value & 0xFFFFFF
-        rgb = ((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
-        return _nearest_color(rgb)
+        return ((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
 
     if isinstance(value, (tuple, list)) and len(value) in (3, 4):
         rgb_values = value[:3]
@@ -123,10 +120,32 @@ def _normalize_color(value: object) -> Color | None:
                 if channel_value <= 1:
                     channel_value *= 255
                 rgb.append(int(max(0, min(255, round(channel_value)))))
-            return _nearest_color((rgb[0], rgb[1], rgb[2]))
+            return (rgb[0], rgb[1], rgb[2])
         raise ValueError(f"Invalid RGB tuple values {value!r}")
 
     raise ValueError(f"Unsupported input type {type(value)}")
+
+
+def _normalize_color(value: object) -> Color | None:
+    """Normalize color inputs to the nearest Lexicon color name.
+
+    Used for tracks and cuepoints which use a fixed color swatch.
+    """
+    rgb = _parse_color_rgb(value)
+    if rgb is None:
+        return None
+    return _nearest_color(rgb)
+
+
+def _normalize_color_hex(value: object) -> str | None:
+    """Normalize color inputs to a hex string (#RRGGBB).
+
+    Used for tag categories which support a full color picker.
+    """
+    rgb = _parse_color_rgb(value)
+    if rgb is None:
+        return None
+    return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
 def _nearest_color(rgb: tuple[int, int, int]) -> Color:

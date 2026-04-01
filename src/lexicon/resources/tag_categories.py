@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional, Sequence, cast
 
 from .base import Resource
-from ._common_types import ValidationMode, _normalize_color, _normalize_id_sequence, _normalize_id_sequence
+from ._common_types import ValidationMode, _normalize_color_hex, _normalize_id_sequence
 from .tag_categories_types import TagCategoryResponse
 
 
@@ -80,7 +80,7 @@ class TagCategories(Resource):
         
         if color is not None:
             try:
-                normalized_color = _normalize_color(color)
+                normalized_color = _normalize_color_hex(color)
             except ValueError as e:
                 if validation == "strict":
                     raise ValueError(f"Invalid color: {e}") from e
@@ -158,7 +158,7 @@ class TagCategories(Resource):
         
         if color is not None:
             try:
-                normalized_color = _normalize_color(color)
+                normalized_color = _normalize_color_hex(color)
             except ValueError as e:
                 if validation == "strict":
                     raise ValueError(f"Invalid color: {e}") from e
