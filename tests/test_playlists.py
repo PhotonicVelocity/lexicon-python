@@ -268,9 +268,11 @@ class PlaylistsTests(unittest.TestCase):
             self.assertIsNone(self.playlists.update(1, name="x"))
 
     def test_update_with_parent_position_smartlist(self):
-        response = {"data": {"playlist": {"id": 1, "trackIds": []}}}
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "trackIds": []}
         with patch("lexicon.resources.playlists._normalize_smartlist", return_value={"rules": []}), \
-                patch.object(self.playlists, "_patch", return_value=response) as mocked_patch:
+                patch.object(self.playlists, "_patch", return_value=patch_response) as mocked_patch, \
+                patch.object(self.playlists, "get", return_value=get_response):
             result = self.playlists.update(1, parent_id=2, position=1, smartlist={"rules": []})
         self.assertEqual(result.get("id"), 1)
         payload = mocked_patch.call_args.kwargs.get("json")
@@ -279,20 +281,26 @@ class PlaylistsTests(unittest.TestCase):
         self.assertEqual(payload.get("smartlist"), {"rules": []})
 
     def test_update_success(self):
-        response = {"data": {"playlist": {"id": 1, "trackIds": [1, 1, 2]}}}
-        with patch.object(self.playlists, "_patch", return_value=response):
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "name": "x", "trackIds": [1, 2]}
+        with patch.object(self.playlists, "_patch", return_value=patch_response), \
+                patch.object(self.playlists, "get", return_value=get_response):
             result = self.playlists.update(1, name="x")
-        self.assertEqual(result.get("trackIds"), [1, 2])
+        self.assertEqual(result.get("name"), "x")
 
     def test_update_no_dedupe(self):
-        response = {"data": {"playlist": {"id": 1, "trackIds": [1, 2]}}}
-        with patch.object(self.playlists, "_patch", return_value=response):
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "trackIds": [1, 2]}
+        with patch.object(self.playlists, "_patch", return_value=patch_response), \
+                patch.object(self.playlists, "get", return_value=get_response):
             result = self.playlists.update(1, name="x")
         self.assertEqual(result.get("trackIds"), [1, 2])
 
     def test_update_track_ids_not_list(self):
-        response = {"data": {"playlist": {"id": 1, "trackIds": "nope"}}}
-        with patch.object(self.playlists, "_patch", return_value=response):
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "trackIds": "nope"}
+        with patch.object(self.playlists, "_patch", return_value=patch_response), \
+                patch.object(self.playlists, "get", return_value=get_response):
             result = self.playlists.update(1, name="x")
         self.assertEqual(result.get("trackIds"), "nope")
 

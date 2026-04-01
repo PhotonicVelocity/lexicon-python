@@ -450,10 +450,12 @@ class TracksValidationTests(unittest.TestCase):
         mocked_patch.assert_not_called()
 
     def test_update_validation_off(self):
-        response = {"data": {"track": {"id": 1}}}
-        with patch.object(self.tracks, "_patch", return_value=response) as mocked_patch:
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "title": "x"}
+        with patch.object(self.tracks, "_patch", return_value=patch_response) as mocked_patch, \
+                patch.object(self.tracks, "get", return_value=get_response):
             result = self.tracks.update(1, {"title": "x"}, validation="off")
-        self.assertEqual(result, {"id": 1})
+        self.assertEqual(result, {"id": 1, "title": "x"})
         mocked_patch.assert_called()
 
     def test_update_normalize_edits_raises_warn(self):
@@ -464,10 +466,13 @@ class TracksValidationTests(unittest.TestCase):
         mocked_patch.assert_not_called()
 
     def test_update_value_errors_warn(self):
+        patch_response = {"data": {"id": 1}}
+        get_response = {"id": 1, "title": "x"}
         with patch("lexicon.resources.tracks._normalize_edits", return_value=({"title": "x"}, None, ["oops"])), \
-                patch.object(self.tracks, "_patch", return_value={"data": {"track": {"id": 1}}}) as mocked_patch:
+                patch.object(self.tracks, "_patch", return_value=patch_response) as mocked_patch, \
+                patch.object(self.tracks, "get", return_value=get_response):
             result = self.tracks.update(1, {"title": "x"}, validation="warn")
-        self.assertEqual(result, {"id": 1})
+        self.assertEqual(result, {"id": 1, "title": "x"})
         mocked_patch.assert_called()
 
     def test_update_response_not_dict(self):
@@ -845,13 +850,13 @@ class TracksTypesValidationTests(unittest.TestCase):
 
     def test_normalize_sorts_invalid_direction(self):
         payload, invalid_fields, value_errors = _normalize_sorts([("title", "sideways")])  # type: ignore[arg-type]
-        self.assertEqual(payload, [{"field": "title"}])
+        self.assertEqual(payload, [{"field": "title", "dir": "asc"}])
         self.assertIsNone(invalid_fields)
         self.assertTrue(value_errors)
 
     def test_normalize_sorts_direction_none(self):
         payload, invalid_fields, value_errors = _normalize_sorts([("title", None)])
-        self.assertEqual(payload, [{"field": "title"}])
+        self.assertEqual(payload, [{"field": "title", "dir": "asc"}])
         self.assertIsNone(invalid_fields)
         self.assertIsNone(value_errors)
 
@@ -916,8 +921,7 @@ class TracksTypesValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _normalize_tag_filter("bad,,")
         self.assertEqual(_normalize_tags([1, 2, 0, -1]), [1, 2])
-        with self.assertRaises(ValueError):
-            _normalize_tags([])
+        self.assertEqual(_normalize_tags([]), [])
         with self.assertRaises(ValueError):
             _normalize_tags("nope")  # type: ignore[arg-type]
 

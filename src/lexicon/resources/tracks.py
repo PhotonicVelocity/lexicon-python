@@ -502,13 +502,13 @@ class Tracks(Resource):
         if not isinstance(response, dict):
             return None
 
-        data = response.get("data") if isinstance(response, dict) else None
-        track = data.get("track") if isinstance(data, dict) else None
-        if isinstance(track, dict):
-            return cast(TrackResponse, track)
-
-        self._logger.warning("Update track response missing expected track data.")
-        return None
+        # Response shape varies: {"id": ..., "edits": {...}}, {"data": {"id": ...}}, or {}
+        # Re-fetch to get the full updated track, falling back to input track_id
+        updated_id = response.get("id")
+        if not isinstance(updated_id, int):
+            data = response.get("data")
+            updated_id = data.get("id") if isinstance(data, dict) else track_id
+        return self.get(updated_id, validation="off", timeout=timeout)
 
     def delete(
         self,
