@@ -263,7 +263,7 @@ def _normalize_bool(
 TextField = Literal[
     "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
     "grouping", "lyricist", "comment", "key", "genre", "color", "location", "importSource",
-    "extra1", "extra2", "fingerprint", "locationUnique", "streamingId", 
+    "extra1", "extra2", "fingerprint", "locationUnique", "streamingId", "beatshiftCase",
 ]
 TEXT_FIELDS: tuple[TextField, ...] = get_args(TextField)
 
@@ -282,7 +282,7 @@ def _normalize_text(
 
 NumberField = Literal[
     "bpm", "rating", "year", "duration", "bitrate", "playCount", "sampleRate", "id",
-    "trackNumber", "energy", "danceability", "popularity", "happiness", "beatshiftCase",
+    "trackNumber", "energy", "danceability", "popularity", "happiness",
     "sizeBytes", "streamingService", "type"
 ]
 NUMBER_FIELDS: tuple[NumberField, ...] = get_args(NumberField)
@@ -437,10 +437,10 @@ class TrackResponse(TypedDict, total=False):
     sampleRate: ReadOnly[int]
 #    fileType: ReadOnly[str] - not currently returned by API
     trackNumber: ReadOnly[int]
-    energy: ReadOnly[float]
-    danceability: ReadOnly[float]
-    popularity: ReadOnly[float]
-    happiness: ReadOnly[float]
+    energy: ReadOnly[int]
+    danceability: ReadOnly[int]
+    popularity: ReadOnly[int]
+    happiness: ReadOnly[int]
     extra1: ReadOnly[str]
     extra2: ReadOnly[str]
     tags: ReadOnly[list[int]]
@@ -451,7 +451,7 @@ class TrackResponse(TypedDict, total=False):
     incoming: ReadOnly[bool]
     archived: ReadOnly[bool]
     archivedSince: ReadOnly[str]
-    beatshiftCase: ReadOnly[int]
+    beatshiftCase: ReadOnly[str]
     fingerprint: ReadOnly[str]
     streamingService: ReadOnly[str]
     streamingId: ReadOnly[str]
@@ -629,10 +629,10 @@ class TrackUpdate(TypedDict, total=False):
     year: int
     playCount: int | str
     trackNumber: int
-    energy: float | str
-    danceability: float | str
-    popularity: float | str
-    happiness: float | str
+    energy: int | str
+    danceability: int | str
+    popularity: int | str
+    happiness: int | str
     extra1: str
     extra2: str
     tags: list[int]
