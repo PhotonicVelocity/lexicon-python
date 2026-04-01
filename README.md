@@ -306,7 +306,17 @@ For full payload schemas and endpoint details, refer to the Lexicon API docs:
 ## Development
 
 ```bash
-./.venv/bin/python -m pytest --cov --cov-branch --cov-report=term-missing
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Unit tests
+pytest
+
+# Integration tests (requires Lexicon running)
+# Note: Integration tests enforce an empty library state to avoid destructive edits on existing libraries.
+# The fixture setup will back up the existing library, clear it for testing, and restore it afterward.
+pytest -m integration
 ```
 
 ## License
