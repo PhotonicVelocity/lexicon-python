@@ -28,6 +28,13 @@ where = ["src"]
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: integration tests requiring a running Lexicon instance",
+]
+addopts = "-m 'not integration'"
+
 [tool.pydocstyle]
 convention = "numpy"
 

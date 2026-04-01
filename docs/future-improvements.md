@@ -8,17 +8,26 @@ This document outlines potential enhancements organized by priority and scope.
 
 ### 1. Post-API Filtering for Client-Side Search
 
-**Problem**: Some simple track fields are ignored as server-side search filters (e.g., `archived`, `incoming`, `sizeBytes`). Date Fields can't use comparison filters. The fields that are arrays (`cuepoints`, `tempomarkers`) are also not accepted. `tags` is accepted with a custom comma separated string of tag names with `!` and `~` operators (e.g. `"~Rock, !Chill"` - Has tag `Rock` AND doesn't have tag `Chill`).
+**Problem**: Some simple track fields are ignored as server-side search filters
+(e.g., `archived`, `incoming`, `sizeBytes`). Date Fields can't use comparison
+filters. The fields that are arrays (`cuepoints`, `tempomarkers`) are also not
+accepted. `tags` is accepted with a custom comma separated string of tag names
+with `!` and `~` operators (e.g. `"~Rock, !Chill"` - Has tag `Rock` AND doesn't
+have tag `Chill`).
 
-**Solution**: Post fetch filtering. For simple fields this is relatively easy. For cuepoints and tempomarkers some schema will have to be determined, or could be handled by lamdas?
-  - Cuepoints ideas:
-    - Filter on number of cuepoints
-    - Filter on cuepoints with a name
-    - Filter on cuepoints colors
-  - Tempomarker ideas:
-    - Filter on number of tempomarkers
+**Solution**: Post fetch filtering. For simple fields this is relatively easy.
+For cuepoints and tempomarkers some schema will have to be determined, or could
+be handled by lamdas?
+
+- Cuepoints ideas:
+  - Filter on number of cuepoints
+  - Filter on cuepoints with a name
+  - Filter on cuepoints colors
+- Tempomarker ideas:
+  - Filter on number of tempomarkers
 
 **Implementation Options**:
+
 ```python
 # Option A: Filter at method level with optional flag
 # - Method runs post-api filtering on input fields when true
@@ -34,40 +43,45 @@ filtered = lex.tracks.filter_results(tracks, {"incoming": True, "cuepoints": lam
 
 ```
 
-**Implementation Location**: `src/lexicon/resources/tracks.py` (search method) or `src/lexicon/tools/tracks.py` (new helpers file)
+**Implementation Location**: `src/lexicon/resources/tracks.py` (search method)
+or `src/lexicon/tools/tracks.py` (new helpers file)
 
 ---
 
 ### 2. Full Tracks List Download + Local Filtering (>1000 limit)
 
-**Problem**: API caps search results at 1000; users need to filter larger libraries locally.
+**Problem**: API caps search results at 1000; users need to filter larger
+libraries locally.
 
-**Solution**: Offer option to download full tracks list and filter client-side. This is a natural extension of the post-API filtering in #1: if the API caps results or ignores a filter field, the same local filtering logic applies.
+**Solution**: Offer option to download full tracks list and filter client-side.
+This is a natural extension of the post-API filtering in #1: if the API caps
+results or ignores a filter field, the same local filtering logic applies.
 
 **Implementation Strategy**:
+
 ```python
-def search(self, filter: dict, *, 
+def search(self, filter: dict, *,
            client_side_filter: bool = False,
            **kwargs) -> list[TrackResponse] | None:
     """Search tracks, optionally filtering client-side for larger results.
-    
+
     Parameters
     ----------
     client_side_filter : bool
         If True and search would exceed 1000 results, download full library
         and filter locally. Much slower but complete.
     """
-    
+
     # First, try server-side
     results = self._search_api(filter, **kwargs)
-    
+
     if not client_side_filter or len(results) < 1000:
         return results
-    
+
     # Need client-side filtering
     self._logger.warning("Search returned 1000 results; downloading full library for local filtering...")
     all_tracks = self.list(limit=None)  # Get all tracks
-    
+
     # Apply filter locally (same helper as #1)
     filtered = self._apply_filter_locally(all_tracks, filter)
     return filtered
@@ -75,12 +89,12 @@ def search(self, filter: dict, *,
 def _apply_filter_locally(self, tracks: list, filter_dict: dict) -> list:
     """Apply search filter logic locally to track list."""
     results = []
-    
+
     for track in tracks:
         match = True
         for field, value in filter_dict.items():
             track_value = track.get(field)
-            
+
             # Handle different filter types
             if isinstance(value, str):
                 if value.lower() not in str(track_value).lower():
@@ -96,14 +110,15 @@ def _apply_filter_locally(self, tracks: list, filter_dict: dict) -> list:
                 if not any(item in track_value for item in value):
                     match = False
                     break
-        
+
         if match:
             results.append(track)
-    
+
     return results
 ```
 
 **Caveats**:
+
 - Full library download can be slow (1000s of tracks)
 - Filter logic must replicate API behavior exactly
 - Some filters may not be replicable (e.g., complex range queries)
@@ -114,13 +129,16 @@ def _apply_filter_locally(self, tracks: list, filter_dict: dict) -> list:
 
 ### 3. API Version Detection & Compatibility
 
-**Problem**: SDK might break if Lexicon API schema changes; users don't know which version they're using.
+**Problem**: SDK might break if Lexicon API schema changes; users don't know
+which version they're using.
 
-**Solution**: Detect and cache API version on client init. Warn if SDK might need updating.
+**Solution**: Detect and cache API version on client init. Warn if SDK might
+need updating.
 
 **Implementation Options**:
 
 **Option A: Query API version endpoint (if available)**
+
 ```python
 def _detect_api_version(self) -> str:
     """Query /v1/version or similar endpoint."""
@@ -136,6 +154,7 @@ print(lex.api_version)  # "2.5.1"
 ```
 
 **Option B: Fetch and cache OpenAPI schema**
+
 ```python
 def _fetch_openapi_schema(self) -> dict:
     """Download OpenAPI schema from Lexicon instance."""
@@ -151,6 +170,7 @@ schema_version = lex.openapi_schema.get("info", {}).get("version")
 ```
 
 **Option C: Version header in responses**
+
 ```python
 # Check if response includes version header
 def request(...):
@@ -160,30 +180,34 @@ def request(...):
         self._logger.warning(f"API version mismatch: {self.cached_version} vs {api_version}")
 ```
 
-**Implementation Location**: `src/lexicon/client.py` (Lexicon.__init__ method)
+**Implementation Location**: `src/lexicon/client.py` (Lexicon.**init** method)
 
 ---
 
 ### 4. Get Playlist by Name with Disambiguation
 
-**Problem**: Users know playlist names but not IDs; need helper to find playlists by name.
+**Problem**: Users know playlist names but not IDs; need helper to find
+playlists by name.
 
-**Solution**: Add name-based lookup with disambiguation for duplicates. When multiple matches exist, include the full playlist path in the disambiguation output (e.g., `ROOT > Genres > Drum & Bass`).
+**Solution**: Add name-based lookup with disambiguation for duplicates. When
+multiple matches exist, include the full playlist path in the disambiguation
+output (e.g., `ROOT > Genres > Drum & Bass`).
 
 **Implementation Options**:
 
 **Option A: Simple search helper**
+
 ```python
 def get_by_name(self, name: str, strict: bool = False) -> int | list[tuple[int, str]] | None:
     """Find playlist ID(s) by name.
-    
+
     Parameters
     ----------
     name : str
         Playlist name to search for.
     strict : bool
         If True, require exact match. If False, substring match.
-    
+
     Returns
     -------
     int | list[tuple[int, str]] | None
@@ -192,7 +216,7 @@ def get_by_name(self, name: str, strict: bool = False) -> int | list[tuple[int, 
     """
     tree = self.list()
     matches = self._find_playlists_by_name(tree, name, exact=strict)
-    
+
     if len(matches) == 1:
         return matches[0]["id"]
     elif len(matches) > 1:
@@ -201,29 +225,31 @@ def get_by_name(self, name: str, strict: bool = False) -> int | list[tuple[int, 
 ```
 
 **Option B: Interactive selection**
+
 ```python
 def get_by_name_interactive(self, name: str) -> int | None:
     """Find playlist by name with interactive disambiguation."""
     matches = self._find_playlists_by_name(self.list(), name)
-    
+
     if not matches:
         print(f"No playlists found matching '{name}'")
         return None
-    
+
     if len(matches) == 1:
         return matches[0]["id"]
-    
+
     # Multiple matches: use interactive chooser
     print(f"Found {len(matches)} playlists matching '{name}':")
     for i, p in enumerate(matches, 1):
         path = self.get_path_from_id(p["id"])
         print(f"  {i}. {' / '.join(path)}")
-    
+
     choice = int(input("Select one (number): "))
     return matches[choice - 1]["id"] if 1 <= choice <= len(matches) else None
 ```
 
-**Implementation Location**: `src/lexicon/resources/playlists.py` or `src/lexicon/tools/playlists.py`
+**Implementation Location**: `src/lexicon/resources/playlists.py` or
+`src/lexicon/tools/playlists.py`
 
 ---
 
@@ -236,6 +262,7 @@ def get_by_name_interactive(self, name: str) -> int | None:
 **Solution**: Fluent builder API for smartlists.
 
 **Example API Design**:
+
 ```python
 # Build a smartlist: "Artist = 'Daft Punk' AND BPM >= 120"
 smartlist = (
@@ -268,11 +295,13 @@ playlist = lex.playlists.add(
 
 ### 6. Response Caching Layer
 
-**Problem**: Frequent API calls for same data; Lexicon is local but still adds latency.
+**Problem**: Frequent API calls for same data; Lexicon is local but still adds
+latency.
 
 **Solution**: Optional built-in caching with TTL and invalidation.
 
 **Design**:
+
 ```python
 lex = Lexicon(
     host="localhost",
@@ -292,17 +321,20 @@ lex.cache.set_ttl("playlist", 60)
 
 **Implementation**: LRU cache with TTL per resource type
 
-**Implementation Location**: `src/lexicon/cache.py` (new file) + `src/lexicon/client.py` (integration)
+**Implementation Location**: `src/lexicon/cache.py` (new file) +
+`src/lexicon/client.py` (integration)
 
 ---
 
 ### 7. Dataclass/Pydantic Models Layer (Optional)
 
-**Problem**: Raw dicts are flexible but lack IDE support and validation; some users want type safety.
+**Problem**: Raw dicts are flexible but lack IDE support and validation; some
+users want type safety.
 
 **Solution**: Offer optional Pydantic models as convenience layer.
 
 **Design** (with optional dependency):
+
 ```python
 # Without Pydantic (default)
 track = lex.tracks.get(123)  # dict
@@ -319,6 +351,7 @@ track = Track.from_api(lex.tracks.get(123))
 ```
 
 **Trade-offs**:
+
 - ✅ Better IDE support, validation, documentation
 - ❌ Extra dependency, slightly slower serialization
 - ✅ Can be entirely optional (no breaking changes)
@@ -329,15 +362,49 @@ track = Track.from_api(lex.tracks.get(123))
 
 ## Implementation Priority Matrix
 
-| Feature | Effort | Impact | Priority |
-|---------|--------|--------|----------|
-| Post-API filtering (#1) | Medium | High | Medium |
-| Full tracks download + local filtering (#2) | High | High | Medium |
-| API version detection (#3) | Low | Low | Medium |
-| Get playlist by name (#4) | Medium | High | Medium |
-| Smartlist builder (#5) | High | High | Medium |
-| Response caching (#6) | High | Medium | Low |
-| Dataclass/Pydantic models (#7) | High | Medium | Low |
+| Feature                                     | Effort | Impact | Priority |
+| ------------------------------------------- | ------ | ------ | -------- |
+| Post-API filtering (#1)                     | Medium | High   | Medium   |
+| Full tracks download + local filtering (#2) | High   | High   | Medium   |
+| API version detection (#3)                  | Low    | Low    | Medium   |
+| Get playlist by name (#4)                   | Medium | High   | Medium   |
+| Smartlist builder (#5)                      | High   | High   | Medium   |
+| Response caching (#6)                       | High   | Medium | Low      |
+| Dataclass/Pydantic models (#7)              | High   | Medium | Low      |
+
+---
+
+### 8. Validate Update Responses Before Re-Fetch
+
+**Problem**: `tracks.update()` and `playlists.update()` currently re-fetch the
+full object after a PATCH, but don't verify that the API actually accepted the
+edits.
+
+**Solution**: Compare the `edits` echoed back in the PATCH response (e.g.
+`{"id": 1, "edits": {"title": "My New Title"}}`) against what was sent. Warn or
+raise if they don't match before re-fetching.
+
+**Note**: The PATCH response shape varies by edit type — tag edits return `{}`
+(empty dict) with no ID or edits echo. Other edit types may also return empty
+responses. The validation logic needs to account for this, and should not treat
+an empty response as a failure.
+
+**Implementation Location**: `src/lexicon/resources/tracks.py`,
+`src/lexicon/resources/playlists.py`
+
+---
+
+### 9. Track Tag Helper Methods
+
+**Problem**: The API replaces the entire tag list on update. To add or remove a
+single tag, users must fetch the current tags, modify the list, and send it
+back.
+
+**Solution**: Add convenience methods like `tracks.add_tags(track_id, [tag_id])`
+and `tracks.remove_tags(track_id, [tag_id])` that handle the fetch-merge-update
+internally.
+
+**Implementation Location**: `src/lexicon/resources/tracks.py`
 
 ---
 
