@@ -152,8 +152,35 @@ def test_tag_track(lexicon, create_audio_file):
     assert tag["id"] in result.get("tags", [])
 
 
+def test_add_tags_helper(lexicon):
+    """add_tags should append without removing existing tags."""
+    tracks = lexicon.tracks.list(fields=["id", "tags"])
+    tagged = next(t for t in tracks if t.get("tags"))
+    existing_tag = tagged["tags"][0]
+
+    tags = lexicon.tags.list()
+    other_tag = next(t for t in tags if t["id"] != existing_tag and t["label"].startswith("IntTest"))
+    result = lexicon.tracks.add_tags(tagged["id"], other_tag["id"])
+    assert result is not None
+    assert existing_tag in result.get("tags", [])
+    assert other_tag["id"] in result.get("tags", [])
+
+
+def test_remove_tags_helper(lexicon):
+    """remove_tags should remove one tag without affecting others."""
+    tracks = lexicon.tracks.list(fields=["id", "tags"])
+    tagged = next(t for t in tracks if len(t.get("tags", [])) >= 2)
+    tag_to_remove = tagged["tags"][0]
+    tag_to_keep = tagged["tags"][1]
+
+    result = lexicon.tracks.remove_tags(tagged["id"], tag_to_remove)
+    assert result is not None
+    assert tag_to_remove not in result.get("tags", [])
+    assert tag_to_keep in result.get("tags", [])
+
+
 def test_untag_track(lexicon):
-    """Removing tags from a track should clear them."""
+    """Removing all tags from a track should clear them."""
     tracks = lexicon.tracks.list(fields=["id", "tags"])
     tagged = next(t for t in tracks if t.get("tags"))
     result = lexicon.tracks.update(tagged["id"], edits={"tags": []})
