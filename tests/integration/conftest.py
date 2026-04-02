@@ -127,30 +127,43 @@ def _clear_db():
 def lexicon():
     """Session-scoped fixture that provides a Lexicon client against a clean library.
 
-    Setup:
-        1. Quits Lexicon if running
-        2. Backs up the current database
-        3. Removes the database so Lexicon starts fresh
-        4. Launches Lexicon and waits for the API
+    If Lexicon is already running with an empty library, uses it as-is
+    and skips the db swap (useful for iterating on tests).
 
-    Teardown:
-        1. Quits Lexicon
-        2. Restores the original database
-        3. Relaunches Lexicon
+    Otherwise:
+        Setup:
+            1. Quits Lexicon if running
+            2. Backs up the current database
+            3. Removes the database so Lexicon starts fresh
+            4. Launches Lexicon and waits for the API
+        Teardown:
+            1. Quits Lexicon
+            2. Restores the original database
+            3. Relaunches Lexicon
     """
-    was_running = _is_api_ready()
+    swapped = False
+    client = Lexicon()
 
-    # Setup
+    # Check if already running with an empty library
+    if _is_api_ready():
+        tracks = client.tracks.list()
+        if not tracks or len(tracks) == 0:
+            yield client
+            return
+
+    # Need to swap — library is populated or Lexicon isn't running
+    was_running = _is_api_ready()
     if was_running:
         _quit_lexicon()
     _backup_db()
     _clear_db()
+    swapped = True
 
     try:
         _launch_lexicon()
         client = Lexicon()
 
-        # Guard: verify the library is empty before running tests
+        # Guard: verify the library is empty
         tracks = client.tracks.list()
         if tracks and len(tracks) > 0:
             raise RuntimeError(
@@ -160,10 +173,11 @@ def lexicon():
 
         yield client
     finally:
-        _quit_lexicon()
-        _restore_db()
-        if was_running:
-            _launch_lexicon()
+        if swapped:
+            _quit_lexicon()
+            _restore_db()
+            if was_running:
+                _launch_lexicon()
 
 
 TEST_DIR = Path(__file__).resolve().parent

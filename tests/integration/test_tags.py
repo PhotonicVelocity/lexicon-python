@@ -32,13 +32,23 @@ def test_list_categories(lexicon):
     assert "Integration Color Cat" in labels
 
 
-def test_update_category(lexicon):
+def test_update_category_label(lexicon):
     """Updating a category label should persist."""
     categories = lexicon.tags.categories.list()
     category = next(c for c in categories if c["label"] == "Integration Category")
     result = lexicon.tags.categories.update(category["id"], label="Integration Cat Updated")
     assert result is not None
     assert result["label"] == "Integration Cat Updated"
+
+
+def test_update_category_color(lexicon):
+    """Updating a category color should persist."""
+    categories = lexicon.tags.categories.list()
+    category = next(c for c in categories if c["label"] == "Integration Cat Updated")
+    result = lexicon.tags.categories.update(category["id"], color="red")
+    assert result is not None
+    assert result.get("color") == "#e60f0d"
+
 
 
 def test_delete_category(lexicon):
@@ -82,13 +92,46 @@ def test_list_tags(lexicon):
     assert "IntTest Tag B" in labels
 
 
-def test_update_tag(lexicon):
+def test_update_tag_label(lexicon):
     """Updating a tag label should persist."""
     tags = lexicon.tags.list()
     tag = next(t for t in tags if t["label"] == "IntTest Tag B")
     result = lexicon.tags.update(tag["id"], label="IntTest Tag B Updated")
     assert result is not None
     assert result["label"] == "IntTest Tag B Updated"
+
+
+def test_update_tag_position(lexicon):
+    """Adding a third tag and moving it to position 0 should persist."""
+    categories = lexicon.tags.categories.list()
+    category = next(c for c in categories if c["label"] == "Integration Cat Updated")
+    tag = lexicon.tags.add(category["id"], "IntTest Tag C")
+    assert tag is not None
+
+    # Position must not already be occupied by another tag in the category
+    result = lexicon.tags.update(tag["id"], position=99)
+    assert result is not None
+    assert result.get("position") == 99
+
+
+def test_update_tag_category(lexicon):
+    """Moving a tag to a different category should persist."""
+    categories = lexicon.tags.categories.list()
+    tags = lexicon.tags.list()
+    tag = next(t for t in tags if t["label"] == "IntTest Tag B Updated")
+    original_category = tag["categoryId"]
+
+    # Move to a default category (Genre always exists in a fresh library)
+    target = next(c for c in categories if c["label"] == "Genre")
+    result = lexicon.tags.update(tag["id"], category_id=target["id"])
+    assert result is not None
+    assert result["categoryId"] == target["id"]
+    assert result["categoryId"] != original_category
+
+    # Move it back
+    result = lexicon.tags.update(tag["id"], category_id=original_category)
+    assert result is not None
+    assert result["categoryId"] == original_category
 
 
 def test_tag_track(lexicon, create_audio_file):
@@ -126,3 +169,25 @@ def test_delete_tag(lexicon):
     remaining = lexicon.tags.list()
     remaining_labels = [t["label"] for t in remaining]
     assert "IntTest Tag B Updated" not in remaining_labels
+
+
+def test_cleanup_tags(lexicon):
+    """Delete all IntTest tags, categories, and tracks created by tag tests."""
+    # Delete test tags
+    tags = lexicon.tags.list()
+    if tags:
+        test_tags = [t for t in tags if t["label"].startswith("IntTest")]
+        if test_tags:
+            assert lexicon.tags.delete([t["id"] for t in test_tags]) is True
+
+    # Delete test categories
+    categories = lexicon.tags.categories.list()
+    if categories:
+        test_cats = [c for c in categories if c["label"].startswith("Integration")]
+        for cat in test_cats:
+            assert lexicon.tags.categories.delete(cat["id"]) is True
+
+    # Delete test tracks
+    tracks = lexicon.tracks.list(fields=["id"])
+    if tracks:
+        assert lexicon.tracks.delete([t["id"] for t in tracks]) is True
