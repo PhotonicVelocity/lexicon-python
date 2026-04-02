@@ -31,7 +31,15 @@
 - `GET /v1/search/tracks` does not support filtering for tracks with no tags (`tags=NONE` returns all tracks instead of only untagged tracks).
 - `GET /v1/playlist` can return duplicate `trackIds` when the playlist is a folder; clients may need to deduplicate.
 - `Cuepoint` schema has undocumented `activeLoop` item.
+
+### Added 2026-04-02
+
 - `GET /v1/search/tracks` crashes with `Cannot read properties of undefined (reading 'toUpperCase')` when a sort object is missing the `dir` key (e.g. `{"field": "dateAdded"}`). The `dir` key must always be provided (`"asc"` or `"desc"`).
+- `PATCH /v1/tag` rejects position updates with `"Position within category already in use"` (errorCode 108) if the target position is occupied. There is no insert/swap behavior — the target position must be vacated first.
+- `PATCH /v1/playlist` allows setting position to an already-occupied value without error. This creates overlapping positions with no bumping/insert behavior. Ties are broken by ID order. Inconsistent with tag position behavior which rejects collisions.
+- `PATCH /v1/tag-category` does not accept a `position` parameter (`"'position' is not allowed"`).
+- `PATCH /v1/tag-category` accepts a `tags` array parameter per the spec, and the response echoes it back, but tag membership is unchanged. The category's `tags` list in API responses becomes out of sync with actual state (driven by each tag's `categoryId`). The UI is unaffected. To move tags between categories, use `PATCH /v1/tag` with a new `categoryId`.
+- `PATCH /v1/track` response shape varies by edit type: title/field edits return `{"id": ..., "edits": {...}}`, tag edits return `{}` (empty dict). Client must fall back to the input `track_id` for re-fetching.
 
 ## Undocumented Fields in API Responses
 - `GET /v1/track` 

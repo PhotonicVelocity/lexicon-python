@@ -120,12 +120,13 @@ class TagCategoriesTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.categories.update(1, color="nope", validation="strict")
 
-    def test_update_invalid_tags_warn(self):
-        self.assertIsNone(self.categories.update(1, tags=[0], validation="warn"))
+    # tags param disabled — API accepts but doesn't persist. See api-issues.md
+    # def test_update_invalid_tags_warn(self):
+    #     self.assertIsNone(self.categories.update(1, tags=[0], validation="warn"))
 
-    def test_update_invalid_tags_strict(self):
-        with self.assertRaises(ValueError):
-            self.categories.update(1, tags=[0], validation="strict")
+    # def test_update_invalid_tags_strict(self):
+    #     with self.assertRaises(ValueError):
+    #         self.categories.update(1, tags=[0], validation="strict")
 
     def test_update_no_updates(self):
         with patch.object(self.categories, "_patch") as mocked_patch:
@@ -142,14 +143,13 @@ class TagCategoriesTests(unittest.TestCase):
             result = self.categories.update(1, label="New")
         self.assertEqual(result, {"id": 1})
 
-    def test_update_with_color_and_tags(self):
+    def test_update_with_color(self):
         response = {"id": 2}
         with patch.object(self.categories, "_patch", return_value=response) as mocked_patch:
-            result = self.categories.update(1, color="red", tags=[1, 2])
+            result = self.categories.update(1, color="red")
         self.assertEqual(result, {"id": 2})
         payload = mocked_patch.call_args.kwargs.get("json")
         self.assertEqual(payload.get("color"), "#e60f0d")
-        self.assertEqual(payload.get("tags"), [1, 2])
 
     def test_update_response_missing_data(self):
         with patch.object(self.categories, "_patch", return_value={"data": None}):

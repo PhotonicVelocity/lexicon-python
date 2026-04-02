@@ -115,7 +115,7 @@ class TagCategories(Resource):
         *,
         label: Optional[str] = None,
         color: Optional[str] = None,
-        tags: Optional[Sequence[int]] = None,
+        # tags: Optional[Sequence[int]] = None,  # API accepts but doesn't persist — see api-issues.md
         validation: ValidationMode = "warn",
         timeout: Optional[int] = None,
     ) -> TagCategoryResponse | None:
@@ -129,8 +129,6 @@ class TagCategories(Resource):
             New category label.
         color
             New category color.
-        tags
-            Optional list of tag IDs to assign.
         validation
             Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
             inputs with warnings, and ``"strict"`` raises on invalid inputs.
@@ -172,15 +170,17 @@ class TagCategories(Resource):
             payload["label"] = label
         if color is not None:
             payload["color"] = color
-        if tags is not None:
-            normalized_tags = _normalize_id_sequence(tags)
-            if normalized_tags is None:
-                if validation == "strict":
-                    raise ValueError(f"Invalid tags: {tags}")
-                if validation == "warn":  # pragma: no branch - strict raises above
-                    self._logger.warning("Invalid tags for update: %s", tags)
-                    return None
-            payload["tags"] = normalized_tags
+            
+        # tags param disabled — API accepts but doesn't persist. See api-issues.md
+        # if tags is not None:
+        #     normalized_tags = _normalize_id_sequence(tags)
+        #     if normalized_tags is None:
+        #         if validation == "strict":
+        #             raise ValueError(f"Invalid tags: {tags}")
+        #         if validation == "warn":
+        #             self._logger.warning("Invalid tags for update: %s", tags)
+        #             return None
+        #     payload["tags"] = normalized_tags
 
         if len(payload) == 1:
             self._logger.warning("No updates provided for tag category %s", category_id)
