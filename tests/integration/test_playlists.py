@@ -22,6 +22,38 @@ def test_add_playlist(lexicon):
     assert isinstance(result, int)
 
 
+def test_add_smartlist(lexicon):
+    """Creating a smartlist with rules should return an ID and persist rules."""
+    smartlist = {
+        "matchAll": True,
+        "rules": [
+            {
+                "field": "bpm",
+                "operator": "NumberBetween",
+                "values": [120, 130],
+                "or": False,
+            }
+        ],
+    }
+    result = lexicon.playlists.add(
+        "IntTest Smartlist", playlist_type="smartlist", smartlist=smartlist
+    )
+    assert result is not None
+    assert isinstance(result, int)
+
+    # Verify the smartlist rules persisted
+    playlist = lexicon.playlists.get(result)
+    assert playlist is not None
+    assert playlist.get("type") == "3"
+    saved_rules = playlist.get("smartlist", {})
+    assert saved_rules.get("matchAll") is True
+    assert len(saved_rules.get("rules", [])) == 1
+    rule = saved_rules["rules"][0]
+    assert rule["field"] == "bpm"
+    assert rule["operator"] == "NumberBetween"
+    assert rule["values"] == [120, 130]
+
+
 def test_add_playlist_in_folder(lexicon):
     """Creating a playlist inside a folder should work."""
     tree = lexicon.playlists.list()
@@ -54,7 +86,7 @@ def test_get_playlist(lexicon):
     assert result["name"] == "IntTest Playlist"
 
 
-def test_update_playlist(lexicon):
+def test_update_playlist_name(lexicon):
     """Updating a playlist name should persist."""
     tree = lexicon.playlists.list()
     children = tree.get("playlists", [])
@@ -62,6 +94,35 @@ def test_update_playlist(lexicon):
     result = lexicon.playlists.update(playlist["id"], name="IntTest Playlist Updated")
     assert result is not None
     assert result["name"] == "IntTest Playlist Updated"
+
+
+def test_update_playlist_position(lexicon):
+    """Updating a playlist position should persist."""
+    tree = lexicon.playlists.list()
+    children = tree.get("playlists", [])
+    playlist = next(c for c in children if c.get("name") == "IntTest Playlist Updated")
+    result = lexicon.playlists.update(playlist["id"], position=0)
+    assert result is not None
+    assert result.get("position") == 0
+
+
+def test_update_playlist_parent(lexicon):
+    """Moving a playlist into a folder should persist."""
+    tree = lexicon.playlists.list()
+    children = tree.get("playlists", [])
+    playlist = next(c for c in children if c.get("name") == "IntTest Playlist Updated")
+    folder = next(c for c in children if c.get("name") == "IntTest Folder")
+
+    # Move into folder
+    result = lexicon.playlists.update(playlist["id"], parent_id=folder["id"])
+    assert result is not None
+    assert result.get("parentId") == folder["id"]
+
+    # Move back to root
+    root = tree["id"]
+    result = lexicon.playlists.update(playlist["id"], parent_id=root)
+    assert result is not None
+    assert result.get("parentId") == root
 
 
 def test_get_by_path(lexicon):
@@ -145,16 +206,24 @@ def test_playlist_tracks_remove(lexicon):
 # --- Cleanup ---
 
 
+def test_delete_playlist_tracks(lexicon):
+    """Deleting tracks created by playlist tests."""
+    tracks = lexicon.tracks.list(fields=["id"])
+    if tracks:
+        assert lexicon.tracks.delete([t["id"] for t in tracks]) is True
+
+
 def test_delete_playlists(lexicon):
     """Deleting playlists should remove them."""
     tree = lexicon.playlists.list()
     children = tree.get("playlists", [])
     ids_to_delete = [
         c["id"] for c in children
-        if c.get("name") in ("IntTest Folder", "IntTest Playlist Updated")
+        if c.get("name") in ("IntTest Folder", "IntTest Playlist Updated", "IntTest Smartlist")
     ]
     assert lexicon.playlists.delete(ids_to_delete) is True
     remaining = lexicon.playlists.list()
     remaining_names = [c.get("name") for c in remaining.get("playlists", [])]
     assert "IntTest Folder" not in remaining_names
     assert "IntTest Playlist Updated" not in remaining_names
+    assert "IntTest Smartlist" not in remaining_names
