@@ -377,3 +377,49 @@ class PlaylistsTests(unittest.TestCase):
         self.assertEqual(result, {"id": 2})
         mocked_choose.assert_called_once()
         mocked_get.assert_called_once()
+
+    def test_find_by_name_exact_match(self):
+        tree = {"id": 0, "name": "ROOT", "playlists": [
+            {"id": 1, "name": "Genre", "playlists": [
+                {"id": 2, "name": "DnB"},
+                {"id": 3, "name": "House"},
+            ]},
+            {"id": 4, "name": "House"},
+        ]}
+        with patch.object(self.playlists, "list", return_value=tree):
+            results = self.playlists.find_by_name("House")
+        self.assertEqual(len(results), 2)
+        ids = [r[0] for r in results]
+        self.assertIn(3, ids)
+        self.assertIn(4, ids)
+        # Check paths
+        nested = next(r for r in results if r[0] == 3)
+        self.assertEqual(nested[1], ["Genre", "House"])
+        top = next(r for r in results if r[0] == 4)
+        self.assertEqual(top[1], ["House"])
+
+    def test_find_by_name_substring(self):
+        tree = {"id": 0, "name": "ROOT", "playlists": [
+            {"id": 1, "name": "My DnB Playlist"},
+            {"id": 2, "name": "DnB Classics"},
+            {"id": 3, "name": "House"},
+        ]}
+        with patch.object(self.playlists, "list", return_value=tree):
+            results = self.playlists.find_by_name("dnb", exact=False)
+        self.assertEqual(len(results), 2)
+        ids = [r[0] for r in results]
+        self.assertIn(1, ids)
+        self.assertIn(2, ids)
+
+    def test_find_by_name_no_match(self):
+        tree = {"id": 0, "name": "ROOT", "playlists": [
+            {"id": 1, "name": "House"},
+        ]}
+        with patch.object(self.playlists, "list", return_value=tree):
+            results = self.playlists.find_by_name("Techno")
+        self.assertEqual(results, [])
+
+    def test_find_by_name_list_fails(self):
+        with patch.object(self.playlists, "list", return_value=None):
+            results = self.playlists.find_by_name("House")
+        self.assertEqual(results, [])

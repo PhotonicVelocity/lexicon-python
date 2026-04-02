@@ -504,3 +504,64 @@ class Playlists(Resource):
             return cast(PlaylistResponse, playlist)
         self._logger.warning("Playlist not found for provided path: %s", playlist_path)
         return None
+
+    def find_by_name(
+        self,
+        name: str,
+        *,
+        exact: bool = True,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> list[tuple[int, list[str]]]:
+        """Find playlists by name, returning IDs and paths.
+
+        Parameters
+        ----------
+        name
+            Playlist name to search for.
+        exact
+            If True, require exact match. If False, case-insensitive substring match.
+        validation
+            Validation mode.
+        timeout
+            Request timeout in seconds.
+
+        Returns
+        -------
+        list of (int, list[str])
+            List of ``(playlist_id, path)`` tuples for each match.
+            Empty list if no matches found.
+        """
+        tree = self.list(validation=validation, timeout=timeout)
+        if tree is None:
+            return []
+
+        matches: list[tuple[int, list[str]]] = []
+
+        def _walk(node: dict, path: list[str]) -> None:
+            node_name = node.get("name")
+            node_id = node.get("id")
+            current_path = [*path, node_name] if isinstance(node_name, str) else path
+
+            if isinstance(node_name, str) and isinstance(node_id, int):
+                if exact:
+                    if node_name == name:
+                        matches.append((node_id, current_path))
+                else:
+                    if name.lower() in node_name.lower():
+                        matches.append((node_id, current_path))
+
+            for child in node.get("playlists", []):
+                if isinstance(child, dict):
+                    _walk(child, current_path)
+
+        _walk(cast(dict, tree), [])
+
+        # Strip ROOT prefix from paths
+        cleaned: list[tuple[int, list[str]]] = []
+        for pid, path in matches:
+            if len(path) > 1 and path[0].upper() == "ROOT":
+                cleaned.append((pid, path[1:]))
+            else:
+                cleaned.append((pid, path))
+        return cleaned
