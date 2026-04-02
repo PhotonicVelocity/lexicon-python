@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Literal, Sequence, TypedDict, get_args
+from typing import Literal, Required, Sequence, TypedDict, get_args
 from typing_extensions import ReadOnly
+
+__all__ = ["PlaylistResponse"]
+
 
 class PlaylistResponse(TypedDict, total=False):
     """Readonly playlist dict returned by playlist endpoints."""
-    id: ReadOnly[int]
-    name: ReadOnly[str]
-    dateAdded: ReadOnly[str]
-    type: ReadOnly[PlaylistTypeCode]
+    id: Required[ReadOnly[int]]
+    name: Required[ReadOnly[str]]
+    dateAdded: Required[ReadOnly[str]]
+    dateModified: Required[ReadOnly[str]]
+    type: Required[ReadOnly[PlaylistTypeCode]]
+    parentId: Required[ReadOnly[int | None]]
+    position: Required[ReadOnly[int]]
     folderType: ReadOnly[PlaylistFolderType | None]
-    parentId: ReadOnly[int]
-    position: ReadOnly[int]
     trackIds: ReadOnly[list[int]]
     smartlist: ReadOnly[dict[str, object]]
 

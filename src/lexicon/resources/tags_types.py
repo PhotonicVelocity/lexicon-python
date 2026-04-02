@@ -6,15 +6,15 @@ No complex normalization functions needed; validation stays inline in tags.py.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Required, TypedDict
 from typing_extensions import ReadOnly
+
+__all__ = ["TagResponse"]
 
 
 class TagResponse(TypedDict, total=False):
     """Readonly tag dict returned by tag endpoints."""
-    id: ReadOnly[int]
-    label: ReadOnly[str]
-    categoryId: ReadOnly[int]
+    id: Required[ReadOnly[int]]
+    label: Required[ReadOnly[str]]
+    categoryId: Required[ReadOnly[int]]
     position: ReadOnly[int]
-
-__all__ = ["TagResponse"]

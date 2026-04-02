@@ -8,6 +8,7 @@ import re
 from ._common_types import Color, _normalize_color
 
 __all__ = [
+    "TrackResponse",
     "TrackField",
     "TrackUpdate",
     "DEFAULT_TRACK_FIELDS",
@@ -387,18 +388,18 @@ def _normalize_tags(
 
 
 # Response shape for track resource responses
-class CuePointResponse(TypedDict, total=False):
+class CuePointResponse(TypedDict):
     """Readonly cuepoint dict returned in track responses."""
     id: ReadOnly[int]
     name: ReadOnly[str]
-    type: Required["CuePointTypeCode"]
-    startTime: Required[float]
+    type: ReadOnly[CuePointTypeCode]
+    startTime: ReadOnly[float]
     endTime: ReadOnly[float | None]
     activeLoop: ReadOnly[bool]
-    position: Required[int]
+    position: ReadOnly[int]
     color: ReadOnly[Color]
 
-class TempoMarkerResponse(TypedDict, total=False):
+class TempoMarkerResponse(TypedDict):
     """Readonly tempo marker dict returned in track responses."""
     id: ReadOnly[int]
     trackId: ReadOnly[int]
@@ -408,7 +409,7 @@ class TempoMarkerResponse(TypedDict, total=False):
 
 class TrackResponse(TypedDict, total=False):
     """Readonly track dict returned by track endpoints."""
-    id: ReadOnly[int]
+    id: Required[ReadOnly[int]]
     type: ReadOnly[int | str]
     title: ReadOnly[str]
     artist: ReadOnly[str]
