@@ -58,6 +58,13 @@ def _normalize_playlist_type(playlist_type: PlaylistType | object) -> PlaylistTy
     raise ValueError(f"Invalid playlist type: {playlist_type}")
 
 
+def _playlist_type_name(code: str) -> PlaylistTypeName | str:
+    """Convert playlist type code to human-readable name."""
+    if code in PLAYLIST_TYPE_CODES:
+        return PLAYLIST_TYPE_NAMES[PLAYLIST_TYPE_CODES.index(code)]
+    return code
+
+
 # --- Other Normalization Helpers --- #
 def _normalize_playlist_path(playlist_path: Sequence[str] | object) -> list[str] | None:
     """Normalize playlist path to validated component list.

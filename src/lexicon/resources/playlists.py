@@ -9,6 +9,7 @@ from .playlists_types import (
     _normalize_playlist_type,
     _normalize_playlist_path,
     _normalize_smartlist,
+    _playlist_type_name,
     PlaylistResponse,
     PlaylistType,
 )
@@ -23,6 +24,22 @@ class Playlists(Resource):
     """Playlist resource operations."""
 
     tracks: "PlaylistTracks"
+
+    def _parse_enums(self, playlist: dict, *, recursive: bool = False) -> dict:
+        """Convert enum codes to names if raw_enums is disabled."""
+        if self._client.raw_enums:
+            return playlist
+        playlist = dict(playlist)
+        if "type" in playlist:
+            playlist["type"] = _playlist_type_name(str(playlist["type"]))
+        if recursive:
+            children = playlist.get("playlists")
+            if isinstance(children, list):
+                playlist["playlists"] = [
+                    self._parse_enums(c, recursive=True) if isinstance(c, dict) else c
+                    for c in children
+                ]
+        return playlist
 
     def get(
         self,
@@ -68,7 +85,7 @@ class Playlists(Resource):
                 if len(deduped) != len(track_ids):
                     playlist = dict(playlist)
                     playlist["trackIds"] = deduped
-            return cast(PlaylistResponse, playlist)
+            return cast(PlaylistResponse, self._parse_enums(playlist))
         self._logger.warning("Playlist %s not found in response", playlist_id)
         return None
 
@@ -145,7 +162,7 @@ class Playlists(Resource):
         if isinstance(playlists, list):
             root = playlists[0] if playlists else None
             if isinstance(root, dict):
-                return cast(PlaylistResponse, root)
+                return cast(PlaylistResponse, self._parse_enums(root, recursive=True))
             self._logger.warning("Playlists response missing expected root entry.")
             return None
         self._logger.warning("Playlists response missing expected list.")
@@ -501,7 +518,7 @@ class Playlists(Resource):
         data = response.get("data") if isinstance(response, dict) else None
         playlist = data.get("playlist") if isinstance(data, dict) else None
         if isinstance(playlist, dict):
-            return cast(PlaylistResponse, playlist)
+            return cast(PlaylistResponse, self._parse_enums(playlist))
         self._logger.warning("Playlist not found for provided path: %s", playlist_path)
         return None
 

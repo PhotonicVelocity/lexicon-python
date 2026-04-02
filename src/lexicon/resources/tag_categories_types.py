@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import TypedDict
 from typing_extensions import ReadOnly
 
-from ._common_types import Color
-
 class TagCategoryResponse(TypedDict, total=False):
     """Readonly tag category dict returned by tag endpoints."""
     id: ReadOnly[int]
     label: ReadOnly[str]
     position: ReadOnly[int]
-    color: ReadOnly[Color]
+    color: ReadOnly[str]  # Hex string (#RRGGBB), not a Color enum name
     tags: ReadOnly[list[int]]
 
 __all__ = ["TagCategoryResponse"]

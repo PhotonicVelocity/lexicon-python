@@ -18,12 +18,27 @@ from .tracks_types import (
     _normalize_fields,
     _normalize_filters,
     _normalize_sorts,
+    _cuepoint_type_name,
 )
 from ._common_types import ValidationMode, _normalize_id_sequence
 
 
 class Tracks(Resource):
     """Track resource operations."""
+
+    def _parse_enums(self, track: dict) -> dict:
+        """Convert enum codes to names if raw_enums is disabled."""
+        if self._client.raw_enums:
+            return track
+        track = dict(track)
+        cuepoints = track.get("cuepoints")
+        if isinstance(cuepoints, list):
+            track["cuepoints"] = [
+                {**cp, "type": _cuepoint_type_name(str(cp["type"]))}
+                if isinstance(cp, dict) and "type" in cp else cp
+                for cp in cuepoints
+            ]
+        return track
 
     def get(
         self,
@@ -64,7 +79,7 @@ class Tracks(Resource):
         data = response.get("data") if isinstance(response, dict) else None
         track = data.get("track") if isinstance(data, dict) else None
         if isinstance(track, dict):
-            return cast(TrackResponse, track)
+            return cast(TrackResponse, self._parse_enums(track))
         self._logger.warning("Track %s not found in response", track_id)
         return None
 
@@ -362,7 +377,7 @@ class Tracks(Resource):
                     total,
                     len(tracks),
                 )
-            return cast(list[TrackResponse], tracks)
+            return cast(list[TrackResponse], [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks])
         self._logger.warning("Tracks search response missing expected list; Response was %s", response)
         return None
 
@@ -420,9 +435,9 @@ class Tracks(Resource):
         data = response.get("data") if isinstance(response, dict) else None
         tracks = data.get("tracks") if isinstance(data, dict) else None
         if isinstance(tracks, list):
-            return cast(list[TrackResponse], tracks)
+            return cast(list[TrackResponse], [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks])
         if isinstance(tracks, dict):
-            return [cast(TrackResponse, tracks)]
+            return [cast(TrackResponse, self._parse_enums(tracks))]
         self._logger.warning("Add tracks response missing expected track list.")
         return None
 
@@ -656,7 +671,7 @@ class Tracks(Resource):
                 self._logger.warning("Tracks response missing expected list; Response was %s", response)
                 return None
 
-            collected.extend(tracks)
+            collected.extend(self._parse_enums(t) if isinstance(t, dict) else t for t in tracks)
 
             if remaining is not None:
                 remaining -= len(tracks)

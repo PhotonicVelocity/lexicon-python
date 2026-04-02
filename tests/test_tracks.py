@@ -43,6 +43,7 @@ logging.basicConfig(
 class DummyClient:
     def __init__(self) -> None:
         self._logger = logging.getLogger("lexicon.tests")
+        self.raw_enums = True
         self.request_calls: list[tuple[str, str, object, object, object]] = []
 
     def request(self, method, path, params=None, json=None, timeout=None):

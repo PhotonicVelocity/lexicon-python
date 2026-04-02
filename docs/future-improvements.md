@@ -325,23 +325,6 @@ an empty response as a failure.
 
 ---
 
-### 10. Parse Enum Values in API Responses
-
-**Problem**: The API returns enum-like fields (e.g. cuepoint `type`, track
-`type`, playlist `type`) as raw strings or ints. The client passes these through
-as-is, so consumers need to know that `"1"` means `"normal"` for cuepoints, `"5"`
-means `"loop"`, etc.
-
-**Solution**: Normalize enum fields in responses to human-readable names (or a
-dedicated enum type), similar to how `_normalize_cuepoint_type` converts names to
-codes on input. This would apply to cuepoint types, playlist types, and track
-types.
-
-**Implementation Location**: `src/lexicon/resources/tracks_types.py`,
-`src/lexicon/resources/playlists_types.py`
-
----
-
 ### 11. Position Reorder Helpers
 
 **Problem**: Position behavior is inconsistent between tags and playlists:
