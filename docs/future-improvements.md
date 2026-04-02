@@ -408,6 +408,57 @@ internally.
 
 ---
 
+### 10. Parse Enum Values in API Responses
+
+**Problem**: The API returns enum-like fields (e.g. cuepoint `type`, track
+`type`, playlist `type`) as raw strings or ints. The client passes these through
+as-is, so consumers need to know that `"1"` means `"normal"` for cuepoints, `"5"`
+means `"loop"`, etc.
+
+**Solution**: Normalize enum fields in responses to human-readable names (or a
+dedicated enum type), similar to how `_normalize_cuepoint_type` converts names to
+codes on input. This would apply to cuepoint types, playlist types, and track
+types.
+
+**Implementation Location**: `src/lexicon/resources/tracks_types.py`,
+`src/lexicon/resources/playlists_types.py`
+
+---
+
+### 11. Position Reorder Helpers
+
+**Problem**: Position behavior is inconsistent between tags and playlists:
+
+- **Tags**: rejects occupied positions with an error — requires vacating the
+  target position first, then moving, then restoring. Clunky for simple reorders.
+- **Playlists**: allows occupied positions but just creates overlaps (no
+  insert/bump behavior). Ties broken by ID order. No way to do a proper insert.
+- **Tag categories**: don't support position updates at all.
+
+**Solution**: Add helper methods that provide a consistent insert-at-position
+experience. For tags, handle the vacate-move-restore dance. For playlists,
+re-number sibling positions after insert to avoid overlaps.
+
+**Implementation Location**: `src/lexicon/resources/tags.py`,
+`src/lexicon/resources/playlists.py`
+
+---
+
+### 12. Tag Category Bulk Tag Assignment
+
+**Problem**: The `tags` parameter on `PATCH /tag-category` is non-functional (see
+api-issues.md). There is no way to assign multiple tags to a category in one
+call.
+
+**Solution**: Add a helper like
+`tags.categories.set_tags(category_id, [tag_ids])` that sets the category's tag
+membership by updating each tag's `categoryId` individually via `PATCH /tag`.
+Could also support `add_tags` / `remove_tags` variants for partial updates.
+
+**Implementation Location**: `src/lexicon/resources/tag_categories.py`
+
+---
+
 ## Notes
 
 - All features should maintain backward compatibility
