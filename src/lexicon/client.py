@@ -34,6 +34,7 @@ class Lexicon:
         default_timeout: int = 20,
         session: Optional[requests.Session] = None,
         raise_on_error: bool = False,
+        raw_enums: bool = True,
     ) -> None:
         """Create a Lexicon client bound to an API instance.
 
@@ -49,11 +50,15 @@ class Lexicon:
             Optional requests session to reuse connections.
         raise_on_error
             If True, raise HTTP errors instead of returning None.
+        raw_enums
+            If True (default), return API enum values as raw codes (e.g. ``"1"``).
+            If False, convert to human-readable names (e.g. ``"normal"``).
         """
         self.host = host or DEFAULT_HOST
         self.port = int(port or LEXICON_PORT)
         self.default_timeout = default_timeout
         self.raise_on_error = raise_on_error
+        self.raw_enums = raw_enums
         self._logger = logging.getLogger(__name__)
         self._session = session
 

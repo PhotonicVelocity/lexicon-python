@@ -488,6 +488,13 @@ def _normalize_cuepoint_type(cuepoint_type: CuePointType) -> CuePointTypeCode:
         return CUEPOINT_TYPE_CODES[CUEPOINT_TYPE_NAMES.index(cuepoint_type)]
     raise ValueError(f"Invalid cuepoint type: {cuepoint_type}")
 
+
+def _cuepoint_type_name(code: str) -> CuePointTypeName | str:
+    """Convert cuepoint type code to human-readable name."""
+    if code in CUEPOINT_TYPE_CODES:
+        return CUEPOINT_TYPE_NAMES[CUEPOINT_TYPE_CODES.index(code)]
+    return code
+
 @dataclass
 class CuepointErrors:
     """Structured cuepoint validation errors."""

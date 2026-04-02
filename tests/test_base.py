@@ -15,6 +15,7 @@ from lexicon.resources.base import Resource  # noqa: E402
 class DummyClient:
     def __init__(self) -> None:
         self._logger = logging.getLogger("lexicon.tests")
+        self.raw_enums = True
         self.calls: list[tuple[str, str, object, object, object]] = []
 
     def request(self, method, path, params=None, json=None, timeout=None):
