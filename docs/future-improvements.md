@@ -394,20 +394,6 @@ an empty response as a failure.
 
 ---
 
-### 9. Track Tag Helper Methods
-
-**Problem**: The API replaces the entire tag list on update. To add or remove a
-single tag, users must fetch the current tags, modify the list, and send it
-back.
-
-**Solution**: Add convenience methods like `tracks.add_tags(track_id, [tag_id])`
-and `tracks.remove_tags(track_id, [tag_id])` that handle the fetch-merge-update
-internally.
-
-**Implementation Location**: `src/lexicon/resources/tracks.py`
-
----
-
 ### 10. Parse Enum Values in API Responses
 
 **Problem**: The API returns enum-like fields (e.g. cuepoint `type`, track

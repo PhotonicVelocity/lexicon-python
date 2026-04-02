@@ -545,6 +545,80 @@ class TracksValidationTests(unittest.TestCase):
             result = self.tracks.add(["/tmp/a.mp3"], validation="warn")
         self.assertIsNone(result)
 
+    def test_add_tags_appends(self):
+        track = {"id": 1, "tags": [10, 20]}
+        updated = {"id": 1, "tags": [10, 20, 30]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.add_tags(1, 30)
+        self.assertEqual(result, updated)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10, 20, 30])
+
+    def test_add_tags_deduplicates(self):
+        track = {"id": 1, "tags": [10, 20]}
+        updated = {"id": 1, "tags": [10, 20]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.add_tags(1, [20, 10])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10, 20])
+
+    def test_add_tags_to_untagged_track(self):
+        track = {"id": 1}
+        updated = {"id": 1, "tags": [10]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.add_tags(1, 10)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10])
+
+    def test_add_tags_get_fails(self):
+        with patch.object(self.tracks, "get", return_value=None):
+            result = self.tracks.add_tags(1, 10)
+        self.assertIsNone(result)
+
+    def test_add_tags_multiple(self):
+        track = {"id": 1, "tags": [10]}
+        updated = {"id": 1, "tags": [10, 20, 30]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.add_tags(1, [20, 30])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10, 20, 30])
+
+    def test_remove_tags_single(self):
+        track = {"id": 1, "tags": [10, 20, 30]}
+        updated = {"id": 1, "tags": [10, 30]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.remove_tags(1, 20)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10, 30])
+
+    def test_remove_tags_multiple(self):
+        track = {"id": 1, "tags": [10, 20, 30]}
+        updated = {"id": 1, "tags": [10]}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.remove_tags(1, [20, 30])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [10])
+
+    def test_remove_tags_get_fails(self):
+        with patch.object(self.tracks, "get", return_value=None):
+            result = self.tracks.remove_tags(1, 10)
+        self.assertIsNone(result)
+
+    def test_remove_tags_all(self):
+        track = {"id": 1, "tags": [10]}
+        updated = {"id": 1, "tags": []}
+        with patch.object(self.tracks, "get", return_value=track), \
+                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+            result = self.tracks.remove_tags(1, 10)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        self.assertEqual(edits["tags"], [])
+
     def test_delete_invalid_track_ids_strict_raises(self):
         with patch.object(self.tracks, "_delete") as mocked_delete:
             with self.assertRaises(ValueError):

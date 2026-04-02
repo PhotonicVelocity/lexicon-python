@@ -510,6 +510,74 @@ class Tracks(Resource):
             updated_id = data.get("id") if isinstance(data, dict) else track_id
         return self.get(updated_id, validation="off", timeout=timeout)
 
+    def add_tags(
+        self,
+        track_id: int,
+        tag_ids: Sequence[int] | int,
+        *,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> TrackResponse | None:
+        """Add tags to a track without removing existing ones.
+
+        Parameters
+        ----------
+        track_id
+            Track identifier.
+        tag_ids
+            Tag ID or list of tag IDs to add.
+        validation
+            Validation mode.
+        timeout
+            Request timeout in seconds.
+
+        Returns
+        -------
+        TrackResponse or None
+            Updated track dict, or None on error.
+        """
+        track = self.get(track_id, validation=validation, timeout=timeout)
+        if track is None:
+            return None
+        current = track.get("tags", [])
+        new_ids = [tag_ids] if isinstance(tag_ids, int) else list(tag_ids)
+        merged = list(dict.fromkeys(current + new_ids))  # dedupe, preserve order
+        return self.update(track_id, edits={"tags": merged}, validation=validation, timeout=timeout)
+
+    def remove_tags(
+        self,
+        track_id: int,
+        tag_ids: Sequence[int] | int,
+        *,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> TrackResponse | None:
+        """Remove tags from a track without affecting other tags.
+
+        Parameters
+        ----------
+        track_id
+            Track identifier.
+        tag_ids
+            Tag ID or list of tag IDs to remove.
+        validation
+            Validation mode.
+        timeout
+            Request timeout in seconds.
+
+        Returns
+        -------
+        TrackResponse or None
+            Updated track dict, or None on error.
+        """
+        track = self.get(track_id, validation=validation, timeout=timeout)
+        if track is None:
+            return None
+        current = track.get("tags", [])
+        to_remove = {tag_ids} if isinstance(tag_ids, int) else set(tag_ids)
+        remaining = [t for t in current if t not in to_remove]
+        return self.update(track_id, edits={"tags": remaining}, validation=validation, timeout=timeout)
+
     def delete(
         self,
         track_ids: Sequence[int] | int,
