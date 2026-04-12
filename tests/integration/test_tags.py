@@ -36,7 +36,9 @@ def test_update_category_label(lexicon):
     """Updating a category label should persist."""
     categories = lexicon.tags.categories.list()
     category = next(c for c in categories if c["label"] == "Integration Category")
-    result = lexicon.tags.categories.update(category["id"], label="Integration Cat Updated")
+    result = lexicon.tags.categories.update(
+        category["id"], label="Integration Cat Updated"
+    )
     assert result is not None
     assert result["label"] == "Integration Cat Updated"
 
@@ -48,7 +50,6 @@ def test_update_category_color(lexicon):
     result = lexicon.tags.categories.update(category["id"], color="red")
     assert result is not None
     assert result.get("color") == "#e60f0d"
-
 
 
 def test_delete_category(lexicon):
@@ -159,7 +160,9 @@ def test_add_tags_helper(lexicon):
     existing_tag = tagged["tags"][0]
 
     tags = lexicon.tags.list()
-    other_tag = next(t for t in tags if t["id"] != existing_tag and t["label"].startswith("IntTest"))
+    other_tag = next(
+        t for t in tags if t["id"] != existing_tag and t["label"].startswith("IntTest")
+    )
     result = lexicon.tracks.add_tags(tagged["id"], other_tag["id"])
     assert result is not None
     assert existing_tag in result.get("tags", [])

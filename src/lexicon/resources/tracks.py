@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Literal, Mapping, cast
+from typing import Optional, Sequence, Literal, Mapping, cast
 
 from .base import Resource
 from .tracks_types import (
@@ -35,7 +35,8 @@ class Tracks(Resource):
         if isinstance(cuepoints, list):
             track["cuepoints"] = [
                 {**cp, "type": _cuepoint_type_name(str(cp["type"]))}
-                if isinstance(cp, dict) and "type" in cp else cp
+                if isinstance(cp, dict) and "type" in cp
+                else cp
                 for cp in cuepoints
             ]
         return track
@@ -118,28 +119,44 @@ class Tracks(Resource):
                 if validation == "strict":
                     raise ValueError(f"Invalid track_ids for get_many: {track_ids}")
                 if validation == "warn":  # pragma: no branch - strict raises above
-                    self._logger.warning("Invalid track_ids for get_many: %s", track_ids)
+                    self._logger.warning(
+                        "Invalid track_ids for get_many: %s", track_ids
+                    )
                     return None
 
         # Always fetch IDs to estimate library size for the 5% cutoff.
         all_ids = self.list(fields=["id"], timeout=timeout)
         if not all_ids:
-            return [self.get(track_id, timeout=timeout) if track_id in ids else None for track_id in ids]
+            return [
+                self.get(track_id, timeout=timeout) if track_id in ids else None
+                for track_id in ids
+            ]
 
         # Large requests are considered to be > 5% of total library size
         cutoff = len(all_ids) * 0.05
-        
+
         # Get all tracks and trim by id for large requests
         if len(ids) >= cutoff:
             all_tracks = self.list(fields="all", timeout=timeout) or []
-            by_id = {track.get("id"): track for track in all_tracks if isinstance(track, dict)}
+            by_id = {
+                track.get("id"): track
+                for track in all_tracks
+                if isinstance(track, dict)
+            }
             return [
-                by_id.get(cast(int, track_id)) if isinstance(track_id, int) and track_id in ids else None
+                by_id.get(cast(int, track_id))
+                if isinstance(track_id, int) and track_id in ids
+                else None
                 for track_id in ids
             ]
-        
+
         # Get tracks one-by-one for small requests
-        return [self.get(cast(int, track_id), timeout=timeout) if isinstance(track_id, int) and track_id in ids else None for track_id in ids]
+        return [
+            self.get(cast(int, track_id), timeout=timeout)
+            if isinstance(track_id, int) and track_id in ids
+            else None
+            for track_id in ids
+        ]
 
     def list(
         self,
@@ -160,7 +177,7 @@ class Tracks(Resource):
         source
             Track source filter (e.g., "non-archived").
         fields
-            Fields to include in each track dict. 
+            Fields to include in each track dict.
             - Use ``"all"`` or ``"*"`` to request all fields from the API.
             - None returns DEFAULT_TRACK_FIELDS
             - With validation ``"off"``, list is required and None returns all fields
@@ -191,7 +208,9 @@ class Tracks(Resource):
             elif validation == "strict":
                 raise ValueError(f"Invalid track source: {source}")
             else:
-                self._logger.warning("Ignoring invalid track source: %s", source)  # pragma: no branch
+                self._logger.warning(
+                    "Ignoring invalid track source: %s", source
+                )  # pragma: no branch
 
         # Sort - validate and add to payload
         sort_fields = []
@@ -204,13 +223,19 @@ class Tracks(Resource):
                     if invalid_fields:
                         if validation == "strict":
                             raise ValueError(f"Invalid sort fields: {invalid_fields}")
-                        self._logger.warning("Skipping invalid sort fields: %s", invalid_fields)
+                        self._logger.warning(
+                            "Skipping invalid sort fields: %s", invalid_fields
+                        )
                     if value_errors:
                         if validation == "strict":
                             raise ValueError(f"Invalid sort values: {value_errors}")
-                        self._logger.warning("Skipping invalid sort values: %s", value_errors)
+                        self._logger.warning(
+                            "Skipping invalid sort values: %s", value_errors
+                        )
                     if sort_payload:
-                        sort_fields = cast(list[TrackField], [entry["field"] for entry in sort_payload])
+                        sort_fields = cast(
+                            list[TrackField], [entry["field"] for entry in sort_payload]
+                        )
                         payload["sort"] = sort_payload
                 except ValueError as e:
                     if validation == "strict":
@@ -223,15 +248,19 @@ class Tracks(Resource):
             if fields is not None:
                 payload["fields"] = fields
         else:
-            fields_payload, input_str_error, invalid_fields = _normalize_fields(fields, extra_fields=sort_fields)
+            fields_payload, input_str_error, invalid_fields = _normalize_fields(
+                fields, extra_fields=sort_fields
+            )
             if input_str_error:
                 if validation == "strict":
-                    raise ValueError(f"Fields: {input_str_error}")    
+                    raise ValueError(f"Fields: {input_str_error}")
                 self._logger.warning("Using default fields: %s", input_str_error)
             if invalid_fields:
                 if validation == "strict":
                     raise ValueError(f"Invalid field names: {invalid_fields}")
-                self._logger.warning("Skipped returning invalid field names: %s", invalid_fields)
+                self._logger.warning(
+                    "Skipped returning invalid field names: %s", invalid_fields
+                )
 
             if fields_payload is not None:
                 payload["fields"] = fields_payload
@@ -239,7 +268,9 @@ class Tracks(Resource):
         # Perform paged request. The API expects paging payloads in the GET body.
         return cast(
             list[TrackResponse] | None,
-            self._paged_tracks_json("/tracks", payload, limit=limit, offset=0, timeout=timeout),
+            self._paged_tracks_json(
+                "/tracks", payload, limit=limit, offset=0, timeout=timeout
+            ),
         )
 
     def search(
@@ -261,7 +292,7 @@ class Tracks(Resource):
         source
             Track source filter (e.g., "non-archived").
         fields
-            Fields to include in each track dict. 
+            Fields to include in each track dict.
             - Use ``"all"`` or ``"*"`` to request all fields from the API.
             - None returns DEFAULT_TRACK_FIELDS
             - With validation ``"off"``, list is required and None returns all fields
@@ -289,7 +320,9 @@ class Tracks(Resource):
             filter_fields = []
         else:
             try:
-                filter_payload, invalid_fields, value_errors = _normalize_filters(filter)
+                filter_payload, invalid_fields, value_errors = _normalize_filters(
+                    filter
+                )
             except ValueError as e:
                 if validation == "strict":
                     raise
@@ -298,13 +331,17 @@ class Tracks(Resource):
             if invalid_fields:
                 if validation == "strict":
                     raise ValueError(f"Invalid filter fields: {invalid_fields}")
-                self._logger.warning("Skipping invalid filter fields: %s", invalid_fields)
+                self._logger.warning(
+                    "Skipping invalid filter fields: %s", invalid_fields
+                )
             if value_errors:
                 if validation == "strict":
                     raise ValueError(f"Invalid filter values: {value_errors}")
                 self._logger.warning("Skipping invalid filter values: %s", value_errors)
 
-            filter_fields = cast(list[TrackField], [field for field in filter_payload.keys()])
+            filter_fields = cast(
+                list[TrackField], [field for field in filter_payload.keys()]
+            )
             payload["filter"] = filter_payload
 
         # Source - validate and add to payload
@@ -316,7 +353,9 @@ class Tracks(Resource):
             elif validation == "strict":
                 raise ValueError(f"Invalid track source: {source}")
             else:
-                self._logger.warning("Ignoring invalid track source: %s", source)  # pragma: no branch
+                self._logger.warning(
+                    "Ignoring invalid track source: %s", source
+                )  # pragma: no branch
 
         # Sort - validate and add to payload
         sort_fields = []
@@ -329,13 +368,19 @@ class Tracks(Resource):
                     if invalid_fields:
                         if validation == "strict":
                             raise ValueError(f"Invalid sort fields: {invalid_fields}")
-                        self._logger.warning("Skipping invalid sort fields: %s", invalid_fields)
+                        self._logger.warning(
+                            "Skipping invalid sort fields: %s", invalid_fields
+                        )
                     if value_errors:
                         if validation == "strict":
                             raise ValueError(f"Invalid sort values: {value_errors}")
-                        self._logger.warning("Skipping invalid sort values: %s", value_errors)
+                        self._logger.warning(
+                            "Skipping invalid sort values: %s", value_errors
+                        )
                     if sort_payload:
-                        sort_fields = cast(list[TrackField], [entry["field"] for entry in sort_payload])
+                        sort_fields = cast(
+                            list[TrackField], [entry["field"] for entry in sort_payload]
+                        )
                         payload["sort"] = sort_payload
                 except ValueError as e:
                     if validation == "strict":
@@ -348,15 +393,21 @@ class Tracks(Resource):
             if fields is not None:
                 payload["fields"] = fields
         else:
-            fields_payload, input_str_error, invalid_fields = _normalize_fields(fields, extra_fields=sort_fields + filter_fields)
+            fields_payload, input_str_error, invalid_fields = _normalize_fields(
+                fields, extra_fields=sort_fields + filter_fields
+            )
             if input_str_error:
                 if validation == "strict":
-                    raise ValueError(f"Field returns: {input_str_error}")    
+                    raise ValueError(f"Field returns: {input_str_error}")
                 self._logger.warning(f"Using default field returns: {input_str_error}")
             if invalid_fields:
                 if validation == "strict":
-                    raise ValueError(f"Invalid field names for return: {invalid_fields}")
-                self._logger.warning(f"Skipped returning invalid field names: {invalid_fields}")
+                    raise ValueError(
+                        f"Invalid field names for return: {invalid_fields}"
+                    )
+                self._logger.warning(
+                    f"Skipped returning invalid field names: {invalid_fields}"
+                )
 
             if fields_payload is not None:
                 payload["fields"] = fields_payload
@@ -377,8 +428,13 @@ class Tracks(Resource):
                     total,
                     len(tracks),
                 )
-            return cast(list[TrackResponse], [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks])
-        self._logger.warning("Tracks search response missing expected list; Response was %s", response)
+            return cast(
+                list[TrackResponse],
+                [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks],
+            )
+        self._logger.warning(
+            "Tracks search response missing expected list; Response was %s", response
+        )
         return None
 
     def add(
@@ -421,21 +477,28 @@ class Tracks(Resource):
                 return None
 
         location_list = list(locations)
-        if not location_list or any(not isinstance(path, str) or not path for path in location_list):
+        if not location_list or any(
+            not isinstance(path, str) or not path for path in location_list
+        ):
             if validation == "strict":
                 raise ValueError(f"Invalid locations payload for add: {locations}")
             if validation == "warn":  # pragma: no branch - strict raises above
                 self._logger.warning("Invalid locations payload for add: %s", locations)
                 return None
 
-        response = self._post("/tracks", json={"locations": location_list}, timeout=timeout)
+        response = self._post(
+            "/tracks", json={"locations": location_list}, timeout=timeout
+        )
         if not isinstance(response, dict):
             return None
 
         data = response.get("data") if isinstance(response, dict) else None
         tracks = data.get("tracks") if isinstance(data, dict) else None
         if isinstance(tracks, list):
-            return cast(list[TrackResponse], [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks])
+            return cast(
+                list[TrackResponse],
+                [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks],
+            )
         if isinstance(tracks, dict):
             return [cast(TrackResponse, self._parse_enums(tracks))]
         self._logger.warning("Add tracks response missing expected track list.")
@@ -484,7 +547,9 @@ class Tracks(Resource):
         if not isinstance(edits, dict) or not edits:
             if validation == "strict":
                 raise ValueError(f"Invalid edits payload for track {track_id}: {edits}")
-            self._logger.warning("Invalid edits payload for track %s: %s", track_id, edits)
+            self._logger.warning(
+                "Invalid edits payload for track %s: %s", track_id, edits
+            )
             return None
 
         edits_map = cast(Mapping[TrackEditField, object], edits)
@@ -557,7 +622,9 @@ class Tracks(Resource):
         current = track.get("tags", [])
         new_ids = [tag_ids] if isinstance(tag_ids, int) else list(tag_ids)
         merged = list(dict.fromkeys(current + new_ids))  # dedupe, preserve order
-        return self.update(track_id, edits={"tags": merged}, validation=validation, timeout=timeout)
+        return self.update(
+            track_id, edits={"tags": merged}, validation=validation, timeout=timeout
+        )
 
     def remove_tags(
         self,
@@ -591,7 +658,9 @@ class Tracks(Resource):
         current = track.get("tags", [])
         to_remove = {tag_ids} if isinstance(tag_ids, int) else set(tag_ids)
         remaining = [t for t in current if t not in to_remove]
-        return self.update(track_id, edits={"tags": remaining}, validation=validation, timeout=timeout)
+        return self.update(
+            track_id, edits={"tags": remaining}, validation=validation, timeout=timeout
+        )
 
     def delete(
         self,
@@ -636,7 +705,6 @@ class Tracks(Resource):
         response = self._delete("/tracks", json=payload, timeout=timeout)
         return response is not None
 
-
     def _paged_tracks_json(
         self,
         path: str,
@@ -668,10 +736,14 @@ class Tracks(Resource):
             data = response.get("data") if isinstance(response, dict) else None
             tracks = data.get("tracks") if isinstance(data, dict) else None
             if not isinstance(tracks, list):
-                self._logger.warning("Tracks response missing expected list; Response was %s", response)
+                self._logger.warning(
+                    "Tracks response missing expected list; Response was %s", response
+                )
                 return None
 
-            collected.extend(self._parse_enums(t) if isinstance(t, dict) else t for t in tracks)
+            collected.extend(
+                self._parse_enums(t) if isinstance(t, dict) else t for t in tracks
+            )
 
             if remaining is not None:
                 remaining -= len(tracks)

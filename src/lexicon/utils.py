@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+
 def unique_in_order(values: Iterable[int]) -> list[int]:
     """Return unique values preserving the original order."""
     seen: set[int] = set()

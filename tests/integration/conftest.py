@@ -70,8 +70,7 @@ def _wait_for_api(ready: bool, timeout: int):
             "Make sure the local API is enabled in Lexicon settings."
         )
     raise TimeoutError(
-        "Lexicon did not shut down in time. "
-        "Please close it manually and re-run."
+        "Lexicon did not shut down in time. Please close it manually and re-run."
     )
 
 

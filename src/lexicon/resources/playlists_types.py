@@ -10,6 +10,7 @@ __all__ = ["PlaylistResponse"]
 
 class PlaylistResponse(TypedDict, total=False):
     """Readonly playlist dict returned by playlist endpoints."""
+
     id: Required[ReadOnly[int]]
     name: Required[ReadOnly[str]]
     dateAdded: Required[ReadOnly[str]]
@@ -20,6 +21,7 @@ class PlaylistResponse(TypedDict, total=False):
     folderType: ReadOnly[PlaylistFolderType | None]
     trackIds: ReadOnly[list[int]]
     smartlist: ReadOnly[dict[str, object]]
+
 
 # --- Playlist Type Definitions --- #
 PlaylistTypeInt = Literal[1, 2, 3]
@@ -34,18 +36,18 @@ PlaylistFolderType = Literal["1", "2"]
 
 def _normalize_playlist_type(playlist_type: PlaylistType | object) -> PlaylistTypeCode:
     """Normalize playlist type input to string numeric codes.
-    
+
     Parameters
     ----------
     playlist_type
-        Playlist type: int (1/2/3), string code ("1"/"2"/"3"), 
+        Playlist type: int (1/2/3), string code ("1"/"2"/"3"),
         or name ("folder"/"playlist"/"smartlist").
-    
+
     Returns
     -------
     PlaylistTypeCode
         Normalized type code ("1", "2", or "3").
-    
+
     Raises
     ------
     ValueError
@@ -72,12 +74,12 @@ def _playlist_type_name(code: str) -> PlaylistTypeName | str:
 # --- Other Normalization Helpers --- #
 def _normalize_playlist_path(playlist_path: Sequence[str] | object) -> list[str] | None:
     """Normalize playlist path to validated component list.
-    
+
     Parameters
     ----------
     playlist_path
         Ordered folder path components. Must be a sequence of non-empty strings.
-    
+
     Returns
     -------
     list[str] | None
@@ -86,9 +88,11 @@ def _normalize_playlist_path(playlist_path: Sequence[str] | object) -> list[str]
         - Returns None if empty after stripping
         - Returns None if any component is not a string or is empty
     """
-    if not isinstance(playlist_path, Sequence) or isinstance(playlist_path, (str, bytes)):
+    if not isinstance(playlist_path, Sequence) or isinstance(
+        playlist_path, (str, bytes)
+    ):
         return None
-    
+
     components: list[str] = []
     for component in playlist_path:
         if not isinstance(component, str):
@@ -97,19 +101,19 @@ def _normalize_playlist_path(playlist_path: Sequence[str] | object) -> list[str]
         if not stripped:
             return None
         components.append(stripped)
-    
+
     return components if components else None
 
 
 def _normalize_smartlist(smartlist: dict | object) -> dict | None:
     """Normalize smartlist payload dict.
-    
+
     Parameters
     ----------
     smartlist
-        Smartlist rule payload. Must be a dict; full schema validation 
+        Smartlist rule payload. Must be a dict; full schema validation
         is deferred to the API.
-    
+
     Returns
     -------
     dict | None

@@ -41,7 +41,10 @@ class PlaylistsTypesTests(unittest.TestCase):
         self.assertIsNone(_normalize_playlist_path([1]))
 
     def test_normalize_playlist_path_success(self):
-        self.assertEqual(_normalize_playlist_path([" Genres ", "Drum & Bass "]), ["Genres", "Drum & Bass"])
+        self.assertEqual(
+            _normalize_playlist_path([" Genres ", "Drum & Bass "]),
+            ["Genres", "Drum & Bass"],
+        )
 
     def test_normalize_smartlist_invalid(self):
         self.assertIsNone(_normalize_smartlist(["bad"]))
