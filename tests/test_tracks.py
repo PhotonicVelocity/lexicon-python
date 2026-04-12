@@ -828,7 +828,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.add_tags(1, [20, 10])
+            self.tracks.add_tags(1, [20, 10])
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")
@@ -841,7 +841,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.add_tags(1, 10)
+            self.tracks.add_tags(1, 10)
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")
@@ -859,7 +859,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.add_tags(1, [20, 30])
+            self.tracks.add_tags(1, [20, 30])
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")
@@ -872,7 +872,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.remove_tags(1, 20)
+            self.tracks.remove_tags(1, 20)
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")
@@ -885,7 +885,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.remove_tags(1, [20, 30])
+            self.tracks.remove_tags(1, [20, 30])
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")
@@ -903,7 +903,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=track),
             patch.object(self.tracks, "update", return_value=updated) as mocked_update,
         ):
-            result = self.tracks.remove_tags(1, 10)
+            self.tracks.remove_tags(1, 10)
         edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
             1
         ].get("edits")

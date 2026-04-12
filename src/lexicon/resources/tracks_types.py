@@ -197,24 +197,24 @@ def _normalize_filters(
     filter_payload: dict[FilterField, object] = {}
     invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in filters.items():
-        if field not in FILTER_FIELDS:
-            invalid_fields.append(str(field))
+    for fname, value in filters.items():
+        if fname not in FILTER_FIELDS:
+            invalid_fields.append(str(fname))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if fname in BOOL_FIELDS:
                 value = _normalize_bool(value, context="filter")  # pragma: no cover
-            if field in TEXT_FIELDS:
+            if fname in TEXT_FIELDS:
                 value = _normalize_text(value, context="filter")
-            if field in NUMBER_FIELDS:
+            if fname in NUMBER_FIELDS:
                 value = _normalize_number(value, context="filter")
-            if field in DATE_FIELDS:
+            if fname in DATE_FIELDS:
                 value = _normalize_date(value, context="filter")
-            if field == "tags":
+            if fname == "tags":
                 value = _normalize_tag_filter(value)
-            filter_payload[field] = value
+            filter_payload[fname] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{fname}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
@@ -266,22 +266,22 @@ def _normalize_edits(
     edits_payload: dict[TrackEditField, object] = {}
     invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in edits.items():
-        if field not in TRACK_EDIT_FIELDS:
-            invalid_fields.append(str(field))
+    for fname, value in edits.items():
+        if fname not in TRACK_EDIT_FIELDS:
+            invalid_fields.append(str(fname))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if fname in BOOL_FIELDS:
                 value = _normalize_bool(value, context="edit")
-            if field in TEXT_FIELDS:
+            if fname in TEXT_FIELDS:
                 value = _normalize_text(value, context="edit")
-            if field in NUMBER_FIELDS:
+            if fname in NUMBER_FIELDS:
                 value = _normalize_number(value, context="edit")
-            if field in DATE_FIELDS:
+            if fname in DATE_FIELDS:
                 value = _normalize_date(value, context="edit")  # pragma: no cover
-            if field == "tags":
+            if fname == "tags":
                 value = _normalize_tags(value)
-            if field == "cuepoints":
+            if fname == "cuepoints":
                 value, cue_errors = _normalize_cuepoints(value)
                 if cue_errors.fatal:
                     value_errors.extend(
@@ -295,7 +295,7 @@ def _normalize_edits(
                     value_errors.extend(
                         [f"cuepoints: {err}" for err in cue_errors.partial]
                     )
-            if field == "tempomarkers":
+            if fname == "tempomarkers":
                 value, tempo_errors = _normalize_tempomarkers(value)
                 if tempo_errors.fatal:
                     value_errors.extend(
@@ -305,9 +305,9 @@ def _normalize_edits(
                     value_errors.extend(
                         [f"tempomarkers: {err}" for err in tempo_errors.dropped]
                     )
-            edits_payload[field] = value
+            edits_payload[fname] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{fname}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
@@ -611,6 +611,15 @@ def _normalize_tags(
     raise ValueError(f"Input must be list[int]. Given [{type(value)}]")
 
 
+# Cuepoint type literals (used by CuePointResponse and helpers below)
+CuePointTypeInt = Literal[1, 2, 3, 4, 5]
+CuePointTypeCode = Literal["1", "2", "3", "4", "5"]
+CuePointTypeName = Literal["normal", "fade-in", "fade-out", "load", "loop"]
+CuePointType = CuePointTypeCode | CuePointTypeInt | CuePointTypeName
+CUEPOINT_TYPE_CODES: tuple[CuePointTypeCode, ...] = get_args(CuePointTypeCode)
+CUEPOINT_TYPE_NAMES: tuple[CuePointTypeName, ...] = get_args(CuePointTypeName)
+
+
 # Response shape for track resource responses
 class CuePointResponse(TypedDict):
     """Readonly cuepoint dict returned in track responses."""
@@ -699,15 +708,6 @@ class CuePointUpdate(TypedDict, total=False):
     activeLoop: int
     endTime: float
     color: Color | None
-
-
-# Cuepoint type helpers
-CuePointTypeInt = Literal[1, 2, 3, 4, 5]
-CuePointTypeCode = Literal["1", "2", "3", "4", "5"]
-CuePointTypeName = Literal["normal", "fade-in", "fade-out", "load", "loop"]
-CuePointType = CuePointTypeCode | CuePointTypeInt | CuePointTypeName
-CUEPOINT_TYPE_CODES: tuple[CuePointTypeCode, ...] = get_args(CuePointTypeCode)
-CUEPOINT_TYPE_NAMES: tuple[CuePointTypeName, ...] = get_args(CuePointTypeName)
 
 
 def _normalize_cuepoint_type(cuepoint_type: CuePointType) -> CuePointTypeCode:
