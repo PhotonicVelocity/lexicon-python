@@ -1,5 +1,8 @@
 .PHONY: help test lint format type-check check all clean update-docs update-models update-api-reference update-all convert-test-docs
 
+# When uv is on PATH, run tools via the project environment; otherwise use pytest/ruff from PATH (e.g. activated venv).
+UV_RUN := $(if $(shell command -v uv 2>/dev/null),uv run,)
+
 help:
 	@echo "Available commands:"
 	@echo "  make test        - Run tests with pytest"
@@ -13,27 +16,31 @@ help:
 
 # Run tests with coverage
 run-tests:
-	uv run pytest --cov=src --cov-branch --cov-report=term-missing 
+	$(UV_RUN) pytest --cov=src --cov-branch --cov-report=term-missing 
+
+# Run integration tests
+run-integration-tests:
+	$(UV_RUN) pytest -m integration
 
 # Run linter
 lint-check:
-	uv run ruff check .
+	$(UV_RUN) ruff check .
 
 # Auto-fix linting issues
 lint-fix:
-	uv run ruff check --fix .
+	$(UV_RUN) ruff check --fix .
 
 # Ruff unsafe fixes
 lint-fix-unsafe:
-	uv run ruff check --fix --unsafe-fixes .
+	$(UV_RUN) ruff check --fix --unsafe-fixes .
 
 # Check formatting (without modifying files)
 format-check:
-	uv run ruff format --check .
+	$(UV_RUN) ruff format --check .
 
 # Auto-fix formatting issues
 format-fix:
-	uv run ruff format .
+	$(UV_RUN) ruff format .
 
 # Run all checks
 test: format-fix lint-fix format-check lint-check run-tests

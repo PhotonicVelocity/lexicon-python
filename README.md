@@ -26,12 +26,6 @@ management, and metadata edits while keeping a clean escape hatch to the raw API
 pip install lexicon-python
 ```
 
-Optional (for interactive playlist chooser):
-
-```bash
-pip install InquirerPy
-```
-
 ## Quickstart
 
 ```python
@@ -305,16 +299,12 @@ For full payload schemas and endpoint details, refer to the Lexicon API docs:
 
 ## Development
 
-### Prerequisites
-
-- Python 3.9+
-- [uv](https://docs.astral.sh/uv/) (used for dependency management and running tools)
-
 ### Setup
 
 #### Pip 
 
-To install all runtime and dev dependencies into a local virtual environment
+Ensure that you have Python 3.9+ installed locally.
+To install all runtime and dev dependencies into a local virtual environment using pip:
 
 ```bash
 python -m venv .venv
@@ -324,26 +314,24 @@ pip install -e ".[dev]"
 
 #### uv
 
-To installs all runtime and dev dependencies into a local virtual environment
-managed by `uv` simply run:
+To use [uv](https://docs.astral.sh/uv/) to install all runtime and dev dependencies into a local virtual environment, simply install `uv` and run:
 
 ```bash
 uv sync --dev
 ```
 
-The lockfile (`uv.lock`) is checked in to ensure reproducible
-installs.
-
-
+The lockfile (`uv.lock`) is checked in to ensure reproducible installs.
 
 ### Running Tests
+
+```bash
+# Unit tests
+make run-tests
 
 # Integration tests (requires Lexicon running)
 # Note: Integration tests enforce an empty library state to avoid destructive edits on existing libraries.
 # The fixture setup will back up the existing library, clear it for testing, and restore it afterward.
-
-```bash
-make run-tests          # run tests
+make run-integration-tests
 ```
 
 ### Linting and Formatting
