@@ -16,7 +16,7 @@ help:
 
 # Run tests with coverage
 run-tests:
-	$(UV_RUN) pytest --cov=src --cov-branch --cov-report=term-missing 
+	$(UV_RUN) pytest --cov=src --cov-branch --cov-report=term-missing
 
 # Run integration tests
 run-integration-tests:

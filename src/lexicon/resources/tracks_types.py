@@ -1,9 +1,10 @@
 """Types, structures, and validation for tracks"""
 
+from __future__ import annotations
+
 from typing import (
     Literal,
     Mapping,
-    Required,
     TypedDict,
     Optional,
     Sequence,
@@ -13,13 +14,12 @@ from typing import (
 from datetime import date, datetime
 from dataclasses import dataclass, field
 import re
-
 import sys
 
 if sys.version_info >= (3, 13):
-    from typing import ReadOnly
+    from typing import ReadOnly, Required
 else:
-    from typing_extensions import ReadOnly
+    from typing_extensions import ReadOnly, Required
 
 from ._common_types import Color, _normalize_color
 

@@ -6,8 +6,13 @@ No complex normalization functions needed; validation stays inline in tags.py.
 
 from __future__ import annotations
 
-from typing import Required, TypedDict
-from typing_extensions import ReadOnly
+import sys
+from typing import TypedDict
+
+if sys.version_info >= (3, 13):
+    from typing import ReadOnly, Required
+else:
+    from typing_extensions import ReadOnly, Required
 
 __all__ = ["TagResponse"]
 
