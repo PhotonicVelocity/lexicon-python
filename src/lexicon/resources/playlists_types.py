@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, Required, Sequence, TypedDict, get_args
-from typing_extensions import ReadOnly
+import sys
+from typing import Literal, Sequence, TypedDict, get_args
+
+if sys.version_info >= (3, 13):
+    from typing import ReadOnly, Required
+else:
+    from typing_extensions import ReadOnly, Required
 
 __all__ = ["PlaylistResponse"]
 
