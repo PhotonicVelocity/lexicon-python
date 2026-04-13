@@ -218,8 +218,10 @@ def test_delete_playlists(lexicon):
     tree = lexicon.playlists.list()
     children = tree.get("playlists", [])
     ids_to_delete = [
-        c["id"] for c in children
-        if c.get("name") in ("IntTest Folder", "IntTest Playlist Updated", "IntTest Smartlist")
+        c["id"]
+        for c in children
+        if c.get("name")
+        in ("IntTest Folder", "IntTest Playlist Updated", "IntTest Smartlist")
     ]
     assert lexicon.playlists.delete(ids_to_delete) is True
     remaining = lexicon.playlists.list()

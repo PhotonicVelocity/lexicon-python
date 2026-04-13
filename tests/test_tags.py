@@ -45,7 +45,9 @@ class TagsTests(unittest.TestCase):
             self.assertIsNone(self.tags.list())
 
     def test_list_success(self):
-        with patch.object(self.tags, "_get", return_value={"data": {"tags": [{"id": 1}]}}):
+        with patch.object(
+            self.tags, "_get", return_value={"data": {"tags": [{"id": 1}]}}
+        ):
             self.assertEqual(self.tags.list(), [{"id": 1}])
 
     def test_add_invalid_category(self):

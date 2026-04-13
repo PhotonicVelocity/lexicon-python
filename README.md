@@ -26,12 +26,6 @@ management, and metadata edits while keeping a clean escape hatch to the raw API
 pip install lexicon-python
 ```
 
-Optional (for interactive playlist chooser):
-
-```bash
-pip install InquirerPy
-```
-
 ## Quickstart
 
 ```python
@@ -305,19 +299,79 @@ For full payload schemas and endpoint details, refer to the Lexicon API docs:
 
 ## Development
 
+### Setup
+
+#### Pip 
+
+Ensure that you have Python 3.9+ installed locally.
+To install all runtime and dev dependencies into a local virtual environment using pip:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+```
 
+#### uv
+
+To use [uv](https://docs.astral.sh/uv/) to install all runtime and dev dependencies into a local virtual environment, simply install `uv` and run:
+
+```bash
+uv sync --dev
+```
+
+The lockfile (`uv.lock`) is checked in to ensure reproducible installs.
+
+### Running Tests
+
+```bash
 # Unit tests
-pytest
+make run-tests
 
 # Integration tests (requires Lexicon running)
 # Note: Integration tests enforce an empty library state to avoid destructive edits on existing libraries.
 # The fixture setup will back up the existing library, clear it for testing, and restore it afterward.
-pytest -m integration
+make run-integration-tests
 ```
+
+### Linting and Formatting
+
+The project uses [ruff](https://docs.astral.sh/ruff/) for both linting and
+formatting.
+
+`make test` runs the full suite: format, lint (with auto-fix), then tests.
+`make fix` runs all auto-fixers (lint + format) without running tests.
+
+```bash
+make test               # format-fix → lint-fix → format-check → lint-check → tests
+make fix                # lint-fix → format-fix
+make clean              # remove __pycache__, .pytest_cache, .ruff_cache, etc.
+```
+
+If you want to run the linters or formatters manually, you can use the following commands:
+
+```bash
+make lint-check         # check for lint issues
+make lint-fix           # auto-fix lint issues
+make format-check       # check formatting
+make format-fix         # auto-fix formatting
+```
+
+### CI
+
+GitHub Actions runs on every push to `main` and on pull requests
+targeting those branches. The pipeline includes:
+
+- **Tests** across Python 3.9, 3.10, 3.11, and 3.12
+- **Lint and format checks** via ruff on Python 3.12
+
+Before opening a PR, make sure `make test` passes locally.
+
+### Pull Requests
+
+A PR template is provided at `.github/pull_request_template.md`. When opening a
+PR, fill in the description, check the relevant change-type boxes, and confirm
+testing/checklist items.
 
 ## License
 

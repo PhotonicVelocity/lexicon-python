@@ -61,7 +61,9 @@ def test_update_text_fields(lexicon):
     result = lexicon.tracks.update(track_id, edits=edits)
     assert result is not None
     for field, expected in edits.items():
-        assert result.get(field) == expected, f"{field}: expected {expected!r}, got {result.get(field)!r}"
+        assert result.get(field) == expected, (
+            f"{field}: expected {expected!r}, got {result.get(field)!r}"
+        )
 
 
 def test_update_number_fields(lexicon):
@@ -82,7 +84,9 @@ def test_update_number_fields(lexicon):
     result = lexicon.tracks.update(track_id, edits=edits)
     assert result is not None
     for field, expected in edits.items():
-        assert result.get(field) == expected, f"{field}: expected {expected!r}, got {result.get(field)!r}"
+        assert result.get(field) == expected, (
+            f"{field}: expected {expected!r}, got {result.get(field)!r}"
+        )
 
 
 def test_update_color(lexicon):
@@ -108,7 +112,9 @@ def test_update_bool_fields(lexicon):
     assert result.get("incoming") in (1, True)
 
     # Set both back
-    result = lexicon.tracks.update(track_id, edits={"archived": False, "incoming": False})
+    result = lexicon.tracks.update(
+        track_id, edits={"archived": False, "incoming": False}
+    )
     assert result is not None
     assert result.get("archived") in (0, False)
     assert result.get("incoming") in (0, False)
@@ -120,8 +126,21 @@ def test_update_cuepoints(lexicon):
     assert tracks
     track_id = tracks[0]["id"]
     cuepoints = [
-        {"position": 0, "startTime": 0.5, "type": "normal", "name": "Intro", "color": "green"},
-        {"position": 1, "startTime": 4.0, "type": "loop", "name": "Drop", "endTime": 7.0, "color": "red"},
+        {
+            "position": 0,
+            "startTime": 0.5,
+            "type": "normal",
+            "name": "Intro",
+            "color": "green",
+        },
+        {
+            "position": 1,
+            "startTime": 4.0,
+            "type": "loop",
+            "name": "Drop",
+            "endTime": 7.0,
+            "color": "red",
+        },
     ]
     result = lexicon.tracks.update(track_id, edits={"cuepoints": cuepoints})
     assert result is not None

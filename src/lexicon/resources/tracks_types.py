@@ -1,9 +1,25 @@
-'''Types, structures, and validation for tracks'''
+"""Types, structures, and validation for tracks"""
 
-from typing import Literal, Mapping, ReadOnly, Required, TypedDict, Optional, Sequence, get_args, cast
+from typing import (
+    Literal,
+    Mapping,
+    Required,
+    TypedDict,
+    Optional,
+    Sequence,
+    get_args,
+    cast,
+)
 from datetime import date, datetime
 from dataclasses import dataclass, field
 import re
+
+import sys
+
+if sys.version_info >= (3, 13):
+    from typing import ReadOnly
+else:
+    from typing_extensions import ReadOnly
 
 from ._common_types import Color, _normalize_color
 
@@ -22,30 +38,79 @@ __all__ = [
     "SortField",
 ]
 
-#region --- FIELD TYPES AND VALIDATION ---
+# region --- FIELD TYPES AND VALIDATION ---
 
 # Track source filters for list and search endpoints
 TrackSource = Literal["non-archived", "all", "archived", "incoming"]
 TRACK_SOURCES: tuple[TrackSource, ...] = get_args(TrackSource)
 
 
-#region --- AVAILABLE FIELDS ---
+# region --- AVAILABLE FIELDS ---
 
 # All fields
 TrackField = Literal[
-    "id", "type", "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
-    "grouping", "lyricist", "comment", "key", "genre", "bpm", "rating", "color", "year", "duration",
-    "bitrate", "playCount", "location", "lastPlayed", "dateAdded", "dateModified", "sizeBytes", "sampleRate",
-    "trackNumber", "energy", "danceability", "popularity", "happiness", "extra1", "extra2",
-    "tags", "importSource", "locationUnique", "tempomarkers", "cuepoints", "incoming", "archived",
-    "archivedSince", "beatshiftCase", "fingerprint", "streamingService", "streamingId",
+    "id",
+    "type",
+    "title",
+    "artist",
+    "albumTitle",
+    "label",
+    "remixer",
+    "mix",
+    "composer",
+    "producer",
+    "grouping",
+    "lyricist",
+    "comment",
+    "key",
+    "genre",
+    "bpm",
+    "rating",
+    "color",
+    "year",
+    "duration",
+    "bitrate",
+    "playCount",
+    "location",
+    "lastPlayed",
+    "dateAdded",
+    "dateModified",
+    "sizeBytes",
+    "sampleRate",
+    "trackNumber",
+    "energy",
+    "danceability",
+    "popularity",
+    "happiness",
+    "extra1",
+    "extra2",
+    "tags",
+    "importSource",
+    "locationUnique",
+    "tempomarkers",
+    "cuepoints",
+    "incoming",
+    "archived",
+    "archivedSince",
+    "beatshiftCase",
+    "fingerprint",
+    "streamingService",
+    "streamingId",
 ]
 TRACK_FIELDS: tuple[TrackField, ...] = get_args(TrackField)
 
 # Default return fields for track list and search endpoints
 DEFAULT_TRACK_FIELDS: tuple[TrackField, ...] = (
-    "id", "artist", "title", "albumTitle", "bpm", "key", "duration", "year"
+    "id",
+    "artist",
+    "title",
+    "albumTitle",
+    "bpm",
+    "key",
+    "duration",
+    "year",
 )
+
 
 def _normalize_fields(
     fields: Optional[Sequence[TrackField] | Literal["all", "*"]],
@@ -81,13 +146,43 @@ def _normalize_fields(
 
     return valid_fields, input_str_error, invalid_fields
 
+
 # Fields that can be filtered on by the search API endpoint
 FilterField = Literal[
-    "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
-    "grouping", "lyricist", "comment", "key", "genre", "color", "location", "importSource",
-    "extra1", "extra2", "bpm", "rating", "year", "duration", "bitrate", "playCount", 
-    "sampleRate", "trackNumber", "energy", "danceability", "popularity", "happiness",
-    "lastPlayed", "dateAdded", "dateModified", "tags",
+    "title",
+    "artist",
+    "albumTitle",
+    "label",
+    "remixer",
+    "mix",
+    "composer",
+    "producer",
+    "grouping",
+    "lyricist",
+    "comment",
+    "key",
+    "genre",
+    "color",
+    "location",
+    "importSource",
+    "extra1",
+    "extra2",
+    "bpm",
+    "rating",
+    "year",
+    "duration",
+    "bitrate",
+    "playCount",
+    "sampleRate",
+    "trackNumber",
+    "energy",
+    "danceability",
+    "popularity",
+    "happiness",
+    "lastPlayed",
+    "dateAdded",
+    "dateModified",
+    "tags",
 ]
 FILTER_FIELDS: tuple[FilterField, ...] = get_args(FilterField)
 
@@ -100,37 +195,63 @@ def _normalize_filters(
         raise ValueError(f"Filter input must be a dict: {type(filters)}")
 
     filter_payload: dict[FilterField, object] = {}
-    invalid_fields: list[str] | None= []
+    invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in filters.items():
-        if field not in FILTER_FIELDS:
-            invalid_fields.append(str(field))
+    for fname, value in filters.items():
+        if fname not in FILTER_FIELDS:
+            invalid_fields.append(str(fname))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if fname in BOOL_FIELDS:
                 value = _normalize_bool(value, context="filter")  # pragma: no cover
-            if field in TEXT_FIELDS:
+            if fname in TEXT_FIELDS:
                 value = _normalize_text(value, context="filter")
-            if field in NUMBER_FIELDS:
+            if fname in NUMBER_FIELDS:
                 value = _normalize_number(value, context="filter")
-            if field in DATE_FIELDS:
+            if fname in DATE_FIELDS:
                 value = _normalize_date(value, context="filter")
-            if field == "tags":
+            if fname == "tags":
                 value = _normalize_tag_filter(value)
-            filter_payload[field] = value
+            filter_payload[fname] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{fname}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
     return filter_payload, invalid_fields, value_errors
 
+
 # Fields that can be edited
 TrackEditField = Literal[
-    "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
-    "grouping", "lyricist", "comment", "key", "genre", "rating", "color", "year",
-    "playCount", "trackNumber", "energy", "danceability", "popularity", "happiness",
-    "extra1", "extra2", "tags", "tempomarkers", "cuepoints", "incoming", "archived",
+    "title",
+    "artist",
+    "albumTitle",
+    "label",
+    "remixer",
+    "mix",
+    "composer",
+    "producer",
+    "grouping",
+    "lyricist",
+    "comment",
+    "key",
+    "genre",
+    "rating",
+    "color",
+    "year",
+    "playCount",
+    "trackNumber",
+    "energy",
+    "danceability",
+    "popularity",
+    "happiness",
+    "extra1",
+    "extra2",
+    "tags",
+    "tempomarkers",
+    "cuepoints",
+    "incoming",
+    "archived",
 ]
 TRACK_EDIT_FIELDS: tuple[TrackEditField, ...] = get_args(TrackEditField)
 
@@ -141,56 +262,105 @@ def _normalize_edits(
     """Normalize edit values and return errors."""
     if not isinstance(edits, Mapping):
         raise ValueError(f"Edits input must be a dict: {type(edits)}")
-    
+
     edits_payload: dict[TrackEditField, object] = {}
     invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
-    for field, value in edits.items():
-        if field not in TRACK_EDIT_FIELDS:
-            invalid_fields.append(str(field))
+    for fname, value in edits.items():
+        if fname not in TRACK_EDIT_FIELDS:
+            invalid_fields.append(str(fname))
             continue
         try:
-            if field in BOOL_FIELDS:
+            if fname in BOOL_FIELDS:
                 value = _normalize_bool(value, context="edit")
-            if field in TEXT_FIELDS:
+            if fname in TEXT_FIELDS:
                 value = _normalize_text(value, context="edit")
-            if field in NUMBER_FIELDS:
+            if fname in NUMBER_FIELDS:
                 value = _normalize_number(value, context="edit")
-            if field in DATE_FIELDS:
+            if fname in DATE_FIELDS:
                 value = _normalize_date(value, context="edit")  # pragma: no cover
-            if field == "tags":
+            if fname == "tags":
                 value = _normalize_tags(value)
-            if field == "cuepoints":
+            if fname == "cuepoints":
                 value, cue_errors = _normalize_cuepoints(value)
                 if cue_errors.fatal:
-                    value_errors.extend([f"cuepoints: {err}" for err in cue_errors.fatal])
+                    value_errors.extend(
+                        [f"cuepoints: {err}" for err in cue_errors.fatal]
+                    )
                 if cue_errors.dropped:
-                    value_errors.extend([f"cuepoints: {err}" for err in cue_errors.dropped])
+                    value_errors.extend(
+                        [f"cuepoints: {err}" for err in cue_errors.dropped]
+                    )
                 if cue_errors.partial:
-                    value_errors.extend([f"cuepoints: {err}" for err in cue_errors.partial])
-            if field == "tempomarkers":
+                    value_errors.extend(
+                        [f"cuepoints: {err}" for err in cue_errors.partial]
+                    )
+            if fname == "tempomarkers":
                 value, tempo_errors = _normalize_tempomarkers(value)
                 if tempo_errors.fatal:
-                    value_errors.extend([f"tempomarkers: {err}" for err in tempo_errors.fatal])
+                    value_errors.extend(
+                        [f"tempomarkers: {err}" for err in tempo_errors.fatal]
+                    )
                 if tempo_errors.dropped:
-                    value_errors.extend([f"tempomarkers: {err}" for err in tempo_errors.dropped])
-            edits_payload[field] = value
+                    value_errors.extend(
+                        [f"tempomarkers: {err}" for err in tempo_errors.dropped]
+                    )
+            edits_payload[fname] = value
         except ValueError as exc:
-            value_errors.append(f"{field}: {exc}")
+            value_errors.append(f"{fname}: {exc}")
 
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
     return edits_payload, invalid_fields, value_errors
 
+
 # Fields that can be sorted in list/search API endpoints
 SortFieldDisallowed: tuple[TrackField, ...] = ("cuepoints", "tempomarkers", "tags")
 SortField = Literal[
-    "id", "type", "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
-    "grouping", "lyricist", "comment", "key", "genre", "bpm", "rating", "color", "year", "duration",
-    "bitrate", "playCount", "location", "lastPlayed", "dateAdded", "dateModified", "sizeBytes", "sampleRate", 
-    "trackNumber", "energy", "danceability", "popularity", "happiness", "extra1", "extra2", "importSource", 
-    "locationUnique", "incoming", "archived","archivedSince", "beatshiftCase", "fingerprint", 
-    "streamingService", "streamingId",
+    "id",
+    "type",
+    "title",
+    "artist",
+    "albumTitle",
+    "label",
+    "remixer",
+    "mix",
+    "composer",
+    "producer",
+    "grouping",
+    "lyricist",
+    "comment",
+    "key",
+    "genre",
+    "bpm",
+    "rating",
+    "color",
+    "year",
+    "duration",
+    "bitrate",
+    "playCount",
+    "location",
+    "lastPlayed",
+    "dateAdded",
+    "dateModified",
+    "sizeBytes",
+    "sampleRate",
+    "trackNumber",
+    "energy",
+    "danceability",
+    "popularity",
+    "happiness",
+    "extra1",
+    "extra2",
+    "importSource",
+    "locationUnique",
+    "incoming",
+    "archived",
+    "archivedSince",
+    "beatshiftCase",
+    "fingerprint",
+    "streamingService",
+    "streamingId",
 ]
 SORT_FIELDS: tuple[SortField, ...] = get_args(SortField)
 SortDirection = Literal["asc", "desc"]
@@ -207,9 +377,9 @@ def _normalize_sorts(
         raise ValueError(f"Sort input must be a list: {type(sort)}")
     if isinstance(sort, (str, bytes)):
         raise ValueError("Sort must be a list/tuple, not a string")
-        
+
     sort_payload: list[dict[str, str]] = []
-    invalid_fields: list[str] | None= []
+    invalid_fields: list[str] | None = []
     value_errors: list[str] | None = []
     for item in sort:
         if isinstance(item, dict):
@@ -226,7 +396,9 @@ def _normalize_sorts(
                 continue
             if direction:
                 if direction not in SORT_DIRECTIONS:
-                    value_errors.append(f"Invalid sort direction for {field}: {direction}")
+                    value_errors.append(
+                        f"Invalid sort direction for {field}: {direction}"
+                    )
                     direction = None
             entry: dict[str, str] = {"field": field}
             entry["dir"] = direction or "asc"
@@ -236,9 +408,11 @@ def _normalize_sorts(
     value_errors = value_errors if value_errors else None
     return sort_payload, invalid_fields, value_errors
 
+
 # Field Types
 BoolField = Literal["archived", "incoming"]
 BOOL_FIELDS: tuple[BoolField, ...] = get_args(BoolField)
+
 
 def _normalize_bool(
     value: object,
@@ -261,11 +435,31 @@ def _normalize_bool(
 
 
 TextField = Literal[
-    "title", "artist", "albumTitle", "label", "remixer", "mix", "composer", "producer",
-    "grouping", "lyricist", "comment", "key", "genre", "color", "location", "importSource",
-    "extra1", "extra2", "fingerprint", "locationUnique", "streamingId", "beatshiftCase",
+    "title",
+    "artist",
+    "albumTitle",
+    "label",
+    "remixer",
+    "mix",
+    "composer",
+    "producer",
+    "grouping",
+    "lyricist",
+    "comment",
+    "key",
+    "genre",
+    "color",
+    "location",
+    "importSource",
+    "extra1",
+    "extra2",
+    "fingerprint",
+    "locationUnique",
+    "streamingId",
+    "beatshiftCase",
 ]
 TEXT_FIELDS: tuple[TextField, ...] = get_args(TextField)
+
 
 def _normalize_text(
     value: object,
@@ -281,11 +475,25 @@ def _normalize_text(
 
 
 NumberField = Literal[
-    "bpm", "rating", "year", "duration", "bitrate", "playCount", "sampleRate", "id",
-    "trackNumber", "energy", "danceability", "popularity", "happiness",
-    "sizeBytes", "streamingService", "type"
+    "bpm",
+    "rating",
+    "year",
+    "duration",
+    "bitrate",
+    "playCount",
+    "sampleRate",
+    "id",
+    "trackNumber",
+    "energy",
+    "danceability",
+    "popularity",
+    "happiness",
+    "sizeBytes",
+    "streamingService",
+    "type",
 ]
 NUMBER_FIELDS: tuple[NumberField, ...] = get_args(NumberField)
+
 
 def _normalize_number(
     value: object,
@@ -302,7 +510,9 @@ def _normalize_number(
     if isinstance(value, str):
         if context == "filter":
             none_match = re.match(r"^\s*none\s*$", value, flags=re.IGNORECASE)
-            range_match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$", value)
+            range_match = re.match(
+                r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$", value
+            )
             compare_match = re.match(r"^\s*(?:[<>!]|<=|>=)?\s*\d+(?:\.\d+)?\s*$", value)
             if not any([none_match, range_match, compare_match]):
                 raise ValueError(
@@ -317,13 +527,18 @@ def _normalize_number(
         elif context == "edit":
             if re.match(r"^\s*[+-]?\d+(?:\.\d+)?\s*$", value):
                 return value.strip()
-            raise ValueError(f"Input must be numeric or +/- delta string. Given [{value!r}]")
+            raise ValueError(
+                f"Input must be numeric or +/- delta string. Given [{value!r}]"
+            )
         raise ValueError(f"Invalid context [{context}]")
-    raise ValueError(f"Input must be numerical [str | int | float]. Given [{type(value)}]")
+    raise ValueError(
+        f"Input must be numerical [str | int | float]. Given [{type(value)}]"
+    )
 
 
 DateField = Literal["lastPlayed", "dateAdded", "dateModified", "archivedSince"]
 DATE_FIELDS: tuple[DateField, ...] = get_args(DateField)
+
 
 def _normalize_date(
     value: object,
@@ -343,9 +558,13 @@ def _normalize_date(
         if context == "filter":
             date_match = re.match(r"^(?P<op>[<>]=?)?\s*(\d{4}-\d{2}-\d{2})", value)
             if not date_match:
-                raise ValueError(f"Input must be in YYYY-MM-DD format. Given [{value!r}]")
+                raise ValueError(
+                    f"Input must be in YYYY-MM-DD format. Given [{value!r}]"
+                )
             if date_match.group("op"):
-                raise ValueError("Comparison operators on date filters are not supported by the API")
+                raise ValueError(
+                    "Comparison operators on date filters are not supported by the API"
+                )
             date_iso = cast(str, date_match.group(2))
             return date_iso
         elif context == "edit":
@@ -357,8 +576,10 @@ def _normalize_date(
         raise ValueError(f"Invalid context [{context}]")
     raise ValueError(f"Input must be a date. Given [{type(value)}]")
 
+
 TagField = Literal["tags"]
 TAG_FIELDS: tuple[TagField, ...] = get_args(TagField)
+
 
 def _normalize_tag_filter(
     value: object,
@@ -373,6 +594,7 @@ def _normalize_tag_filter(
         raise ValueError(f"Tag filter string is invalid. Given [{value!r}]")
     return value
 
+
 def _normalize_tags(
     value: object,
 ) -> list[int]:
@@ -380,16 +602,28 @@ def _normalize_tags(
     if isinstance(value, list):
         if len(value) == 0:
             return []
-        tag_ids = {tag_id for tag_id in value if isinstance(tag_id, int) and tag_id >= 1}
+        tag_ids = {
+            tag_id for tag_id in value if isinstance(tag_id, int) and tag_id >= 1
+        }
         if tag_ids:
             return list(tag_ids)
         raise ValueError("Tag list must contain positive ints")
     raise ValueError(f"Input must be list[int]. Given [{type(value)}]")
 
 
+# Cuepoint type literals (used by CuePointResponse and helpers below)
+CuePointTypeInt = Literal[1, 2, 3, 4, 5]
+CuePointTypeCode = Literal["1", "2", "3", "4", "5"]
+CuePointTypeName = Literal["normal", "fade-in", "fade-out", "load", "loop"]
+CuePointType = CuePointTypeCode | CuePointTypeInt | CuePointTypeName
+CUEPOINT_TYPE_CODES: tuple[CuePointTypeCode, ...] = get_args(CuePointTypeCode)
+CUEPOINT_TYPE_NAMES: tuple[CuePointTypeName, ...] = get_args(CuePointTypeName)
+
+
 # Response shape for track resource responses
 class CuePointResponse(TypedDict):
     """Readonly cuepoint dict returned in track responses."""
+
     id: ReadOnly[int]
     name: ReadOnly[str]
     type: ReadOnly[CuePointTypeCode]
@@ -399,16 +633,20 @@ class CuePointResponse(TypedDict):
     position: ReadOnly[int]
     color: ReadOnly[Color]
 
+
 class TempoMarkerResponse(TypedDict):
     """Readonly tempo marker dict returned in track responses."""
+
     id: ReadOnly[int]
     trackId: ReadOnly[int]
     startTime: ReadOnly[float]
     bpm: ReadOnly[float]
     data: ReadOnly[dict]
 
+
 class TrackResponse(TypedDict, total=False):
     """Readonly track dict returned by track endpoints."""
+
     id: Required[ReadOnly[int]]
     type: ReadOnly[int | str]
     title: ReadOnly[str]
@@ -437,7 +675,7 @@ class TrackResponse(TypedDict, total=False):
     dateModified: ReadOnly[str]
     sizeBytes: ReadOnly[int]
     sampleRate: ReadOnly[int]
-#    fileType: ReadOnly[str] - not currently returned by API
+    #    fileType: ReadOnly[str] - not currently returned by API
     trackNumber: ReadOnly[int]
     energy: ReadOnly[int]
     danceability: ReadOnly[int]
@@ -458,9 +696,11 @@ class TrackResponse(TypedDict, total=False):
     streamingService: ReadOnly[str]
     streamingId: ReadOnly[str]
 
+
 # Payload shape for updating track resources
 class CuePointUpdate(TypedDict, total=False):
     """Editable cuepoint dict used when updating tracks."""
+
     position: Required[int]
     startTime: Required[float]
     type: Required["CuePointType"]
@@ -469,13 +709,6 @@ class CuePointUpdate(TypedDict, total=False):
     endTime: float
     color: Color | None
 
-# Cuepoint type helpers
-CuePointTypeInt = Literal[1, 2, 3, 4, 5]
-CuePointTypeCode = Literal["1", "2", "3", "4", "5"]
-CuePointTypeName = Literal["normal", "fade-in", "fade-out", "load", "loop"]
-CuePointType = CuePointTypeCode | CuePointTypeInt | CuePointTypeName
-CUEPOINT_TYPE_CODES: tuple[CuePointTypeCode, ...] = get_args(CuePointTypeCode)
-CUEPOINT_TYPE_NAMES: tuple[CuePointTypeName, ...] = get_args(CuePointTypeName)
 
 def _normalize_cuepoint_type(cuepoint_type: CuePointType) -> CuePointTypeCode:
     """Normalize cuepoint type to numeric code."""
@@ -496,12 +729,15 @@ def _cuepoint_type_name(code: str) -> CuePointTypeName | str:
         return CUEPOINT_TYPE_NAMES[CUEPOINT_TYPE_CODES.index(code)]
     return code
 
+
 @dataclass
 class CuepointErrors:
     """Structured cuepoint validation errors."""
+
     fatal: list[str] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
     partial: list[str] = field(default_factory=list)
+
 
 def _normalize_cuepoints(
     cuepoints: object,
@@ -512,7 +748,7 @@ def _normalize_cuepoints(
     if not isinstance(cuepoints, list):
         errors.fatal.append(f"Cuepoints must be a list. Given: [{type(cuepoints)}]")
         return normalized_cuepoints, errors
-    
+
     for cuepoint in cuepoints:
         if not isinstance(cuepoint, dict):
             errors.dropped.append(f"Invalid cuepoint entry: {cuepoint}")
@@ -522,13 +758,13 @@ def _normalize_cuepoints(
         if missing_required:
             errors.dropped.append(f"Missing required keys: {missing_required}")
             continue
-        
+
         position = cuepoint["position"]
         if not isinstance(position, int):
             errors.dropped.append(f"Positions must be int: {type(position)}")
             continue
         cuepoint_payload["position"] = position
-        
+
         startTime = cuepoint["startTime"]
         if not isinstance(startTime, float):
             errors.dropped.append(f"startTime must be float: {type(startTime)}")
@@ -551,36 +787,43 @@ def _normalize_cuepoints(
         activeLoop = cuepoint.get("activeLoop")
         if activeLoop is not None:
             try:
-                cuepoint_payload["activeLoop"] = _normalize_bool(activeLoop, context="edit")
+                cuepoint_payload["activeLoop"] = _normalize_bool(
+                    activeLoop, context="edit"
+                )
             except ValueError as exc:
                 errors.partial.append(str(exc))
-        
+
         endTime = cuepoint.get("endTime")
         if endTime is not None and not isinstance(endTime, float):
             errors.partial.append(f"endTime must be a float: {endTime}")
         elif endTime is not None:
             cuepoint_payload["endTime"] = endTime
-        
+
         color = cuepoint.get("color")
         if color is not None:
             try:
                 cuepoint_payload["color"] = _normalize_color(color)
             except ValueError as exc:
                 errors.partial.append(str(exc))
-        
+
         normalized_cuepoints.append(cuepoint_payload)
     return normalized_cuepoints, errors
 
+
 class TempoMarkerUpdate(TypedDict):
     """Editable tempo marker dict used when updating tracks."""
+
     startTime: float
     bpm: float | int
+
 
 @dataclass
 class TempomarkerErrors:
     """Structured tempomarker validation errors."""
+
     fatal: list[str] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
+
 
 def _normalize_tempomarkers(
     tempomarkers: object,
@@ -589,7 +832,9 @@ def _normalize_tempomarkers(
     normalized_tempomarkers: list[TempoMarkerUpdate] = []
     errors = TempomarkerErrors()
     if not isinstance(tempomarkers, list):
-        errors.fatal.append(f"Tempomarkers must be a list. Given [{type(tempomarkers)}]")
+        errors.fatal.append(
+            f"Tempomarkers must be a list. Given [{type(tempomarkers)}]"
+        )
         return normalized_tempomarkers, errors
     seen_start_times: set[float] = set()
     for marker in tempomarkers:
@@ -618,8 +863,10 @@ def _normalize_tempomarkers(
         normalized_tempomarkers.append({"startTime": start_time, "bpm": bpm})
     return normalized_tempomarkers, errors
 
+
 class TrackUpdate(TypedDict, total=False):
     """Editable track dict used when updating track fields."""
+
     title: str
     artist: str
     albumTitle: str
