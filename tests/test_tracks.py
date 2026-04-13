@@ -85,6 +85,7 @@ class TracksTests(unittest.TestCase):
             result = self.tracks.get(0, validation="off")
         self.assertEqual(result, {"id": 1})
         mocked_get.assert_called_once()
+
     def test_get_many_empty(self):
         self.assertIsNone(self.tracks.get_many([]))
 
@@ -101,8 +102,10 @@ class TracksTests(unittest.TestCase):
         self.assertEqual(result, [None])
 
     def test_get_many_no_all_ids_fallback(self):
-        with patch.object(self.tracks, "list", return_value=None) as mocked_list, \
-                patch.object(self.tracks, "get", return_value={"id": 1}) as mocked_get:
+        with (
+            patch.object(self.tracks, "list", return_value=None) as mocked_list,
+            patch.object(self.tracks, "get", return_value={"id": 1}) as mocked_get,
+        ):
             result = self.tracks.get_many([1, 0, 2])
         self.assertEqual(result, [{"id": 1}, {"id": 1}])
         mocked_list.assert_called()
@@ -119,8 +122,12 @@ class TracksTests(unittest.TestCase):
         self.assertEqual(result, [{"id": 1}, {"id": 2}, {"id": 3}])
 
     def test_get_many_small_request_uses_get(self):
-        with patch.object(self.tracks, "list", return_value=[{"id": i} for i in range(100)]), \
-                patch.object(self.tracks, "get", return_value={"id": 1}) as mocked_get:
+        with (
+            patch.object(
+                self.tracks, "list", return_value=[{"id": i} for i in range(100)]
+            ),
+            patch.object(self.tracks, "get", return_value={"id": 1}) as mocked_get,
+        ):
             result = self.tracks.get_many([1, 2])
         self.assertEqual(result, [{"id": 1}, {"id": 1}])
         self.assertEqual(mocked_get.call_count, 2)
@@ -137,105 +144,173 @@ class TracksValidationTests(unittest.TestCase):
         mocked_paged.assert_not_called()
 
     def test_list_invalid_source_warn(self):
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(source="bad", validation="warn")  # type: ignore[arg-type]
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("source", payload)
 
     def test_list_invalid_source_off(self):
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(source="bad", validation="off")  # type: ignore[arg-type]
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("source"), "bad")
 
     def test_list_source_none_skips_source(self):
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(source=None, validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("source", payload)
 
     def test_list_validation_off_passes_sort(self):
         sort_input = [{"field": "title", "dir": "asc"}]
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(sort=sort_input, validation="off")
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("sort"), sort_input)
 
     def test_list_sort_invalid_fields_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], ["bad"], None)), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                return_value=([], ["bad"], None),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(sort=[("title", "asc")], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("sort", payload)
 
     def test_list_sort_invalid_fields_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], ["bad"], None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts",
+            return_value=([], ["bad"], None),
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.list(sort=[("title", "asc")], validation="strict")
 
     def test_list_sort_value_errors_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], None, ["oops"])), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                return_value=([], None, ["oops"]),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(sort=[("title", "asc")], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("sort", payload)
 
     def test_list_sort_value_errors_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], None, ["oops"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts",
+            return_value=([], None, ["oops"]),
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.list(sort=[("title", "asc")], validation="strict")
 
     def test_list_sort_exception_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                side_effect=ValueError("bad"),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(sort=[("title", "asc")], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("sort", payload)
 
     def test_list_sort_exception_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.list(sort=[("title", "asc")], validation="strict")
 
     def test_list_sort_payload_set(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([{"field": "title"}], None, None)), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                return_value=([{"field": "title"}], None, None),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(sort=[("title", "asc")], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("sort"), [{"field": "title"}])
 
     def test_list_fields_invalid_string_warn(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], "bad", None)), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_fields",
+                return_value=(["id"], "bad", None),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(fields=["id"], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_list_fields_invalid_string_strict(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], "bad", None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_fields",
+            return_value=(["id"], "bad", None),
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.list(fields=["id"], validation="strict")
 
     def test_list_fields_invalid_names_warn(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], None, ["bad"])), \
-                patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_fields",
+                return_value=(["id"], None, ["bad"]),
+            ),
+            patch.object(
+                self.tracks, "_paged_tracks_json", return_value=[]
+            ) as mocked_paged,
+        ):
             self.tracks.list(fields=["id"], validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_list_fields_invalid_names_strict(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], None, ["bad"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_fields",
+            return_value=(["id"], None, ["bad"]),
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.list(fields=["id"], validation="strict")
 
     def test_list_fields_validation_off_sets_fields(self):
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(fields=["id"], validation="off")
         payload = mocked_paged.call_args[0][1]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_list_fields_all_omits_fields(self):
-        with patch.object(self.tracks, "_paged_tracks_json", return_value=[]) as mocked_paged:
+        with patch.object(
+            self.tracks, "_paged_tracks_json", return_value=[]
+        ) as mocked_paged:
             self.tracks.list(fields="all", validation="warn")
         payload = mocked_paged.call_args[0][1]
         self.assertNotIn("fields", payload)
@@ -243,144 +318,303 @@ class TracksValidationTests(unittest.TestCase):
     def test_search_invalid_filter_strict_raises(self):
         with patch.object(self.tracks, "_request") as mocked_request:
             with self.assertRaises(ValueError):
-                self.tracks.search({"bad": "x"}, sort=[("title", "asc")], validation="strict")  # type: ignore[arg-type]
+                self.tracks.search(
+                    {"bad": "x"}, sort=[("title", "asc")], validation="strict"
+                )  # type: ignore[arg-type]
         mocked_request.assert_not_called()
 
     def test_search_filter_exception_strict(self):
-        with patch("lexicon.resources.tracks._normalize_filters", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tracks._normalize_filters", side_effect=ValueError("bad")
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_filter_invalid_fields_strict(self):
-        with patch("lexicon.resources.tracks._normalize_filters", return_value=({}, ["bad"], None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_filters",
+            return_value=({}, ["bad"], None),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_filter_value_errors_strict(self):
-        with patch("lexicon.resources.tracks._normalize_filters", return_value=({}, None, ["oops"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_filters",
+            return_value=({}, None, ["oops"]),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_invalid_source_strict(self):
         with self.assertRaises(ValueError):
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], source="bad", validation="strict")  # type: ignore[arg-type]
+            self.tracks.search(
+                {"title": "a"},
+                sort=[("title", "asc")],
+                source="bad",
+                validation="strict",
+            )  # type: ignore[arg-type]
 
     def test_search_sort_invalid_fields_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], ["bad"], None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts",
+            return_value=([], ["bad"], None),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_sort_value_errors_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], None, ["oops"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts",
+            return_value=([], None, ["oops"]),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_sort_exception_strict(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_fields_validation_off_sets_fields(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], fields=["id"], validation="off")
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], fields=["id"], validation="off"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_search_fields_all_omits_fields(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], fields="all", validation="warn")
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], fields="all", validation="warn"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertNotIn("fields", payload)
 
     def test_search_fields_invalid_string_strict(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], "bad", None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_fields",
+            return_value=(["id"], "bad", None),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_fields_invalid_names_strict(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], None, ["bad"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_fields",
+            return_value=(["id"], None, ["bad"]),
+        ):
             with self.assertRaises(ValueError):
-                self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="strict")
+                self.tracks.search(
+                    {"title": "a"}, sort=[("title", "asc")], validation="strict"
+                )
 
     def test_search_filter_exception_warn(self):
-        with patch("lexicon.resources.tracks._normalize_filters", side_effect=ValueError("bad")), \
-                patch.object(self.tracks, "_request") as mocked_request:
-            result = self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_filters",
+                side_effect=ValueError("bad"),
+            ),
+            patch.object(self.tracks, "_request") as mocked_request,
+        ):
+            result = self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
         self.assertIsNone(result)
         mocked_request.assert_not_called()
 
     def test_search_filter_invalid_fields_warn(self):
-        with patch("lexicon.resources.tracks._normalize_filters", return_value=({"title": "a"}, ["bad"], None)), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_filters",
+                return_value=({"title": "a"}, ["bad"], None),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ) as mocked_request,
+        ):
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("filter"), {"title": "a"})
 
     def test_search_filter_value_errors_warn(self):
-        with patch("lexicon.resources.tracks._normalize_filters", return_value=({"title": "a"}, None, ["oops"])), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_filters",
+                return_value=({"title": "a"}, None, ["oops"]),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ) as mocked_request,
+        ):
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("filter"), {"title": "a"})
 
     def test_search_invalid_source_warn(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], source="bad", validation="warn")  # type: ignore[arg-type]
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], source="bad", validation="warn"
+            )  # type: ignore[arg-type]
         payload = mocked_request.call_args.kwargs["json"]
         self.assertNotIn("source", payload)
 
     def test_search_invalid_source_off(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], source="bad", validation="off")  # type: ignore[arg-type]
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], source="bad", validation="off"
+            )  # type: ignore[arg-type]
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("source"), "bad")
 
     def test_search_source_none_skips_source(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], source=None, validation="warn")
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], source=None, validation="warn"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertNotIn("source", payload)
 
     def test_search_empty_sort_skips_sort(self):
-        with patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}
+        ) as mocked_request:
             self.tracks.search({"title": "a"}, sort=[], validation="warn")
         payload = mocked_request.call_args.kwargs["json"]
         self.assertNotIn("sort", payload)
 
     def test_search_sort_invalid_fields_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], ["bad"], None)), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}):
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                return_value=([], ["bad"], None),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ),
+        ):
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
 
     def test_search_sort_value_errors_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", return_value=([], None, ["oops"])), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}):
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                return_value=([], None, ["oops"]),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ),
+        ):
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
 
     def test_search_fields_invalid_names_warn(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], None, ["bad"])), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], fields=["id"], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_fields",
+                return_value=(["id"], None, ["bad"]),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ) as mocked_request,
+        ):
+            self.tracks.search(
+                {"title": "a"},
+                sort=[("title", "asc")],
+                fields=["id"],
+                validation="warn",
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_search_sort_exception_warn(self):
-        with patch("lexicon.resources.tracks._normalize_sorts", side_effect=ValueError("bad")), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_sorts",
+                side_effect=ValueError("bad"),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ) as mocked_request,
+        ):
+            self.tracks.search(
+                {"title": "a"}, sort=[("title", "asc")], validation="warn"
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertNotIn("sort", payload)
 
     def test_search_fields_invalid_string_warn(self):
-        with patch("lexicon.resources.tracks._normalize_fields", return_value=(["id"], "bad", None)), \
-                patch.object(self.tracks, "_request", return_value={"data": {"tracks": [], "total": 0}}) as mocked_request:
-            self.tracks.search({"title": "a"}, sort=[("title", "asc")], fields=["id"], validation="warn")
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_fields",
+                return_value=(["id"], "bad", None),
+            ),
+            patch.object(
+                self.tracks,
+                "_request",
+                return_value={"data": {"tracks": [], "total": 0}},
+            ) as mocked_request,
+        ):
+            self.tracks.search(
+                {"title": "a"},
+                sort=[("title", "asc")],
+                fields=["id"],
+                validation="warn",
+            )
         payload = mocked_request.call_args.kwargs["json"]
         self.assertEqual(payload.get("fields"), ["id"])
 
     def test_search_response_not_dict(self):
         with patch.object(self.tracks, "_request", return_value=[]):
-            self.assertIsNone(self.tracks.search({"title": "a"}, sort=[("title", "asc")]))
+            self.assertIsNone(
+                self.tracks.search({"title": "a"}, sort=[("title", "asc")])
+            )
 
     def test_search_response_total_warns(self):
         response = {"data": {"tracks": [{"id": 1}], "total": 10}}
@@ -390,7 +624,9 @@ class TracksValidationTests(unittest.TestCase):
 
     def test_search_response_missing_tracks(self):
         with patch.object(self.tracks, "_request", return_value={"data": {}}):
-            self.assertIsNone(self.tracks.search({"title": "a"}, sort=[("title", "asc")]))
+            self.assertIsNone(
+                self.tracks.search({"title": "a"}, sort=[("title", "asc")])
+            )
 
     def test_search_validation_off_passes_raw_filter(self):
         with patch.object(
@@ -418,17 +654,24 @@ class TracksValidationTests(unittest.TestCase):
             self.tracks.update(1, [], validation="strict")  # type: ignore[arg-type]
 
     def test_update_normalize_edits_raises_strict(self):
-        with patch("lexicon.resources.tracks._normalize_edits", side_effect=ValueError("bad")):
+        with patch(
+            "lexicon.resources.tracks._normalize_edits", side_effect=ValueError("bad")
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.update(1, {"title": "x"}, validation="strict")
 
     def test_update_value_errors_strict(self):
-        with patch("lexicon.resources.tracks._normalize_edits", return_value=({"title": "x"}, None, ["oops"])):
+        with patch(
+            "lexicon.resources.tracks._normalize_edits",
+            return_value=({"title": "x"}, None, ["oops"]),
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.update(1, {"title": "x"}, validation="strict")
 
     def test_update_no_valid_edits_strict(self):
-        with patch("lexicon.resources.tracks._normalize_edits", return_value=({}, None, None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_edits", return_value=({}, None, None)
+        ):
             with self.assertRaises(ValueError):
                 self.tracks.update(1, {"title": "x"}, validation="strict")
 
@@ -453,15 +696,24 @@ class TracksValidationTests(unittest.TestCase):
     def test_update_validation_off(self):
         patch_response = {"data": {"id": 1}}
         get_response = {"id": 1, "title": "x"}
-        with patch.object(self.tracks, "_patch", return_value=patch_response) as mocked_patch, \
-                patch.object(self.tracks, "get", return_value=get_response):
+        with (
+            patch.object(
+                self.tracks, "_patch", return_value=patch_response
+            ) as mocked_patch,
+            patch.object(self.tracks, "get", return_value=get_response),
+        ):
             result = self.tracks.update(1, {"title": "x"}, validation="off")
         self.assertEqual(result, {"id": 1, "title": "x"})
         mocked_patch.assert_called()
 
     def test_update_normalize_edits_raises_warn(self):
-        with patch("lexicon.resources.tracks._normalize_edits", side_effect=ValueError("bad")), \
-                patch.object(self.tracks, "_patch") as mocked_patch:
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_edits",
+                side_effect=ValueError("bad"),
+            ),
+            patch.object(self.tracks, "_patch") as mocked_patch,
+        ):
             result = self.tracks.update(1, {"title": "x"}, validation="warn")
         self.assertFalse(result)
         mocked_patch.assert_not_called()
@@ -469,9 +721,16 @@ class TracksValidationTests(unittest.TestCase):
     def test_update_value_errors_warn(self):
         patch_response = {"data": {"id": 1}}
         get_response = {"id": 1, "title": "x"}
-        with patch("lexicon.resources.tracks._normalize_edits", return_value=({"title": "x"}, None, ["oops"])), \
-                patch.object(self.tracks, "_patch", return_value=patch_response) as mocked_patch, \
-                patch.object(self.tracks, "get", return_value=get_response):
+        with (
+            patch(
+                "lexicon.resources.tracks._normalize_edits",
+                return_value=({"title": "x"}, None, ["oops"]),
+            ),
+            patch.object(
+                self.tracks, "_patch", return_value=patch_response
+            ) as mocked_patch,
+            patch.object(self.tracks, "get", return_value=get_response),
+        ):
             result = self.tracks.update(1, {"title": "x"}, validation="warn")
         self.assertEqual(result, {"id": 1, "title": "x"})
         mocked_patch.assert_called()
@@ -487,7 +746,9 @@ class TracksValidationTests(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_update_no_valid_edits_warn(self):
-        with patch("lexicon.resources.tracks._normalize_edits", return_value=({}, None, None)):
+        with patch(
+            "lexicon.resources.tracks._normalize_edits", return_value=({}, None, None)
+        ):
             result = self.tracks.update(1, {"title": "x"}, validation="warn")
         self.assertFalse(result)
 
@@ -549,29 +810,41 @@ class TracksValidationTests(unittest.TestCase):
     def test_add_tags_appends(self):
         track = {"id": 1, "tags": [10, 20]}
         updated = {"id": 1, "tags": [10, 20, 30]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
             result = self.tracks.add_tags(1, 30)
         self.assertEqual(result, updated)
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10, 20, 30])
 
     def test_add_tags_deduplicates(self):
         track = {"id": 1, "tags": [10, 20]}
         updated = {"id": 1, "tags": [10, 20]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.add_tags(1, [20, 10])
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.add_tags(1, [20, 10])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10, 20])
 
     def test_add_tags_to_untagged_track(self):
         track = {"id": 1}
         updated = {"id": 1, "tags": [10]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.add_tags(1, 10)
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.add_tags(1, 10)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10])
 
     def test_add_tags_get_fails(self):
@@ -582,28 +855,40 @@ class TracksValidationTests(unittest.TestCase):
     def test_add_tags_multiple(self):
         track = {"id": 1, "tags": [10]}
         updated = {"id": 1, "tags": [10, 20, 30]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.add_tags(1, [20, 30])
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.add_tags(1, [20, 30])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10, 20, 30])
 
     def test_remove_tags_single(self):
         track = {"id": 1, "tags": [10, 20, 30]}
         updated = {"id": 1, "tags": [10, 30]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.remove_tags(1, 20)
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.remove_tags(1, 20)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10, 30])
 
     def test_remove_tags_multiple(self):
         track = {"id": 1, "tags": [10, 20, 30]}
         updated = {"id": 1, "tags": [10]}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.remove_tags(1, [20, 30])
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.remove_tags(1, [20, 30])
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [10])
 
     def test_remove_tags_get_fails(self):
@@ -614,10 +899,14 @@ class TracksValidationTests(unittest.TestCase):
     def test_remove_tags_all(self):
         track = {"id": 1, "tags": [10]}
         updated = {"id": 1, "tags": []}
-        with patch.object(self.tracks, "get", return_value=track), \
-                patch.object(self.tracks, "update", return_value=updated) as mocked_update:
-            result = self.tracks.remove_tags(1, 10)
-        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[1].get("edits")
+        with (
+            patch.object(self.tracks, "get", return_value=track),
+            patch.object(self.tracks, "update", return_value=updated) as mocked_update,
+        ):
+            self.tracks.remove_tags(1, 10)
+        edits = mocked_update.call_args.kwargs.get("edits") or mocked_update.call_args[
+            1
+        ].get("edits")
         self.assertEqual(edits["tags"], [])
 
     def test_delete_invalid_track_ids_strict_raises(self):
@@ -662,25 +951,33 @@ class TracksValidationTests(unittest.TestCase):
 
     def test_paged_tracks_limit_zero(self):
         with patch.object(self.tracks, "_request") as mocked_request:
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=0, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=0, offset=0, timeout=None
+            )
         self.assertEqual(result, [])
         mocked_request.assert_not_called()
 
     def test_paged_tracks_response_not_dict(self):
         with patch.object(self.tracks, "_request", return_value=[]):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=10, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=10, offset=0, timeout=None
+            )
         self.assertIsNone(result)
 
     def test_paged_tracks_missing_tracks_list(self):
         response = {"data": {"tracks": "nope"}}
         with patch.object(self.tracks, "_request", return_value=response):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=10, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=10, offset=0, timeout=None
+            )
         self.assertIsNone(result)
 
     def test_paged_tracks_remaining_breaks(self):
         response = {"data": {"tracks": [{"id": 1}], "total": 1, "limit": 1000}}
         with patch.object(self.tracks, "_request", return_value=response):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=1, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=1, offset=0, timeout=None
+            )
         self.assertEqual(result, [{"id": 1}])
 
     def test_paged_tracks_remaining_continues(self):
@@ -689,7 +986,9 @@ class TracksValidationTests(unittest.TestCase):
             {"data": {"tracks": [{"id": 3}], "total": 3, "limit": 2}},
         ]
         with patch.object(self.tracks, "_request", side_effect=responses):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=3, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=3, offset=0, timeout=None
+            )
         self.assertEqual(result, [{"id": 1}, {"id": 2}, {"id": 3}])
 
     def test_paged_tracks_total_limit_paging(self):
@@ -698,19 +997,25 @@ class TracksValidationTests(unittest.TestCase):
             {"data": {"tracks": [{"id": 3}], "total": 3, "limit": 2}},
         ]
         with patch.object(self.tracks, "_request", side_effect=responses):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=None, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=None, offset=0, timeout=None
+            )
         self.assertEqual(result, [{"id": 1}, {"id": 2}, {"id": 3}])
 
     def test_paged_tracks_short_page_breaks(self):
         response = {"data": {"tracks": [{"id": 1}], "total": 10, "limit": 1000}}
         with patch.object(self.tracks, "_request", return_value=response):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=None, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=None, offset=0, timeout=None
+            )
         self.assertEqual(result, [{"id": 1}])
 
     def test_paged_tracks_short_page_no_total(self):
         response = {"data": {"tracks": [{"id": 1}]}}
         with patch.object(self.tracks, "_request", return_value=response):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=None, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=None, offset=0, timeout=None
+            )
         self.assertEqual(result, [{"id": 1}])
 
     def test_paged_tracks_full_page_no_total(self):
@@ -720,7 +1025,9 @@ class TracksValidationTests(unittest.TestCase):
             [],
         ]
         with patch.object(self.tracks, "_request", side_effect=responses):
-            result = self.tracks._paged_tracks_json("/tracks", {}, limit=None, offset=0, timeout=None)
+            result = self.tracks._paged_tracks_json(
+                "/tracks", {}, limit=None, offset=0, timeout=None
+            )
         self.assertIsNone(result)
 
 
@@ -750,7 +1057,9 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertTrue(fields)
 
     def test_normalize_fields_extra_fields(self):
-        fields, input_error, invalid_fields = _normalize_fields(["id"], extra_fields=["title"])
+        fields, input_error, invalid_fields = _normalize_fields(
+            ["id"], extra_fields=["title"]
+        )
         self.assertIsNone(input_error)
         self.assertIsNone(invalid_fields)
         self.assertIn("id", fields or [])
@@ -773,7 +1082,9 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertTrue(any(err.startswith("bpm:") for err in value_errors or []))
 
     def test_normalize_filters_date_operator_error(self):
-        payload, invalid_fields, value_errors = _normalize_filters({"dateAdded": ">2024-01-01"})
+        payload, invalid_fields, value_errors = _normalize_filters(
+            {"dateAdded": ">2024-01-01"}
+        )
         self.assertEqual(payload, {})
         self.assertIsNone(invalid_fields)
         self.assertTrue(any(err.startswith("dateAdded:") for err in value_errors or []))
@@ -881,7 +1192,9 @@ class TracksTypesValidationTests(unittest.TestCase):
         payload, invalid_fields, value_errors = _normalize_edits(edits)
         self.assertIn("tempomarkers", payload)
         self.assertIsNone(invalid_fields)
-        self.assertTrue(any(err.startswith("tempomarkers:") for err in value_errors or []))
+        self.assertTrue(
+            any(err.startswith("tempomarkers:") for err in value_errors or [])
+        )
 
     def test_normalize_edits_value_error(self):
         edits: dict[TrackEditField, object] = {"rating": -1}
@@ -924,7 +1237,9 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertIsNone(value_errors)
 
     def test_normalize_sorts_invalid_direction(self):
-        payload, invalid_fields, value_errors = _normalize_sorts([("title", "sideways")])  # type: ignore[arg-type]
+        payload, invalid_fields, value_errors = _normalize_sorts(
+            [("title", "sideways")]
+        )  # type: ignore[arg-type]
         self.assertEqual(payload, [{"field": "title", "dir": "asc"}])
         self.assertIsNone(invalid_fields)
         self.assertTrue(value_errors)
@@ -972,10 +1287,16 @@ class TracksTypesValidationTests(unittest.TestCase):
     def test_normalize_date_variants(self):
         self.assertEqual(_normalize_date(None, context="filter"), "NONE")
         self.assertIsNone(_normalize_date("none", context="edit"))
-        self.assertEqual(_normalize_date("2024-01-01T12:00:00Z", context="filter"), "2024-01-01")
+        self.assertEqual(
+            _normalize_date("2024-01-01T12:00:00Z", context="filter"), "2024-01-01"
+        )
         self.assertEqual(_normalize_date("2024-01-01", context="edit"), "2024-01-01")
-        self.assertEqual(_normalize_date(datetime(2024, 1, 2, 3, 4), context="edit"), "2024-01-02")
-        self.assertEqual(_normalize_date(date(2024, 1, 3), context="edit"), "2024-01-03")
+        self.assertEqual(
+            _normalize_date(datetime(2024, 1, 2, 3, 4), context="edit"), "2024-01-02"
+        )
+        self.assertEqual(
+            _normalize_date(date(2024, 1, 3), context="edit"), "2024-01-03"
+        )
         with self.assertRaises(ValueError):
             _normalize_date("01-01-2024", context="filter")
         with self.assertRaises(ValueError):
@@ -1020,15 +1341,21 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertEqual(payload, [])
         self.assertTrue(errors.dropped)
 
-        payload, errors = _normalize_cuepoints([{"position": "1", "startTime": 0.5, "type": "1"}])
+        payload, errors = _normalize_cuepoints(
+            [{"position": "1", "startTime": 0.5, "type": "1"}]
+        )
         self.assertEqual(payload, [])
         self.assertTrue(errors.dropped)
 
-        payload, errors = _normalize_cuepoints([{"position": 1, "startTime": "0.5", "type": "1"}])
+        payload, errors = _normalize_cuepoints(
+            [{"position": 1, "startTime": "0.5", "type": "1"}]
+        )
         self.assertEqual(payload, [])
         self.assertTrue(errors.dropped)
 
-        payload, errors = _normalize_cuepoints([{"position": 1, "startTime": 0.5, "type": "9"}])
+        payload, errors = _normalize_cuepoints(
+            [{"position": 1, "startTime": 0.5, "type": "9"}]
+        )
         self.assertEqual(payload, [])
         self.assertTrue(errors.dropped)
 

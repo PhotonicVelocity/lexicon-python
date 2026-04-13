@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from lexicon.resources.playlists_types import PlaylistResponse
 
+
 def get_path_from_tree(tree: PlaylistResponse, playlist_id: int) -> list[str] | None:
     """Return the playlist path (names) for a given ID within a playlist tree."""
     if not isinstance(playlist_id, int) or playlist_id < 1:
@@ -34,6 +35,7 @@ def get_path_from_tree(tree: PlaylistResponse, playlist_id: int) -> list[str] | 
         return result[1:]
     return result
 
+
 def choose_playlist(tree: PlaylistResponse) -> dict[str, Any] | None:
     """Interactively choose a playlist/tree item using InquirerPy.
 
@@ -54,7 +56,9 @@ def choose_playlist(tree: PlaylistResponse) -> dict[str, Any] | None:
 
     stack: list[dict[str, Any]] = [cast(dict[str, Any], tree)]
 
-    def _format_selection(playlist: dict[str, Any]) -> str:  # pragma: no cover - unused for now
+    def _format_selection(
+        playlist: dict[str, Any],
+    ) -> str:  # pragma: no cover - unused for now
         playlist_type = str(playlist.get("type"))
         type_label = {
             "1": "Folder",

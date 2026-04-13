@@ -32,7 +32,9 @@ class BaseResourceTests(unittest.TestCase):
         self.assertIs(self.resource._logger, self.client._logger)
 
     def test_request_passthrough(self):
-        result = self.resource._request("GET", "/x", params={"a": 1}, json={"b": 2}, timeout=5)
+        result = self.resource._request(
+            "GET", "/x", params={"a": 1}, json={"b": 2}, timeout=5
+        )
         self.assertEqual(result, {"ok": True})
         self.assertEqual(self.client.calls[-1], ("GET", "/x", {"a": 1}, {"b": 2}, 5))
 
@@ -50,4 +52,6 @@ class BaseResourceTests(unittest.TestCase):
 
     def test_delete(self):
         self.resource._delete("/d", params={"id": 1}, json={"z": 3}, timeout=6)
-        self.assertEqual(self.client.calls[-1], ("DELETE", "/d", {"id": 1}, {"z": 3}, 6))
+        self.assertEqual(
+            self.client.calls[-1], ("DELETE", "/d", {"id": 1}, {"z": 3}, 6)
+        )

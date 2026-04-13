@@ -1,6 +1,5 @@
 import logging
 import sys
-import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +24,9 @@ logging.basicConfig(
 
 
 class FakeResponse:
-    def __init__(self, *, content=b"{}", json_payload=None, json_error=False, status_error=None):
+    def __init__(
+        self, *, content=b"{}", json_payload=None, json_error=False, status_error=None
+    ):
         self.content = content
         self._json_payload = json_payload
         self._json_error = json_error

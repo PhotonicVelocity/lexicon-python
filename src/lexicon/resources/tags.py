@@ -82,7 +82,7 @@ class Tags(Resource):
             if validation == "warn":  # pragma: no branch - strict raises above
                 self._logger.warning("Invalid category_id for add: %s", category_id)
                 return None
-        
+
         if not isinstance(label, str) or not label.strip():
             if validation == "strict":
                 raise ValueError(f"Invalid label: {label}")
@@ -104,7 +104,9 @@ class Tags(Resource):
         if isinstance(response, dict) and "id" in response:
             # This is how the API actually behaves.
             return cast(TagResponse, response)
-        self._logger.warning("Create tag response missing expected data. Response was %s", response)
+        self._logger.warning(
+            "Create tag response missing expected data. Response was %s", response
+        )
         return None
 
     def update(
@@ -146,21 +148,23 @@ class Tags(Resource):
             if validation == "warn":  # pragma: no branch - strict raises above
                 self._logger.warning("Invalid tag_id for update: %s", tag_id)
                 return None
-        
-        if category_id is not None and (not isinstance(category_id, int) or category_id < 1):
+
+        if category_id is not None and (
+            not isinstance(category_id, int) or category_id < 1
+        ):
             if validation == "strict":
                 raise ValueError(f"Invalid category_id: {category_id}")
             if validation == "warn":  # pragma: no branch - strict raises above
                 self._logger.warning("Invalid category_id for update: %s", category_id)
                 return None
-        
+
         if label is not None and (not isinstance(label, str) or not label.strip()):
             if validation == "strict":
                 raise ValueError(f"Invalid label: {label}")
             if validation == "warn":
                 self._logger.warning("Invalid label for update: %s", label)
             return None
-        
+
         if position is not None and (not isinstance(position, int) or position < 0):
             if validation == "strict":
                 raise ValueError(f"Invalid position: {position}")

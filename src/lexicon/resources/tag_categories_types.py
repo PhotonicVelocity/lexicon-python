@@ -10,6 +10,7 @@ __all__ = ["TagCategoryResponse"]
 
 class TagCategoryResponse(TypedDict, total=False):
     """Readonly tag category dict returned by tag endpoints."""
+
     id: Required[ReadOnly[int]]
     label: Required[ReadOnly[str]]
     position: ReadOnly[int]

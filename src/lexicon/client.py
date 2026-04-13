@@ -14,6 +14,7 @@ from .resources.tag_categories import TagCategories
 from .resources.tags import Tags
 from .resources.tracks import Tracks
 from .tools import playlists as playlist_tools
+
 DEFAULT_HOST = os.environ.get("LEXICON_HOST", "localhost")
 LEXICON_PORT = int(os.environ.get("LEXICON_PORT", "48624"))
 
@@ -64,7 +65,9 @@ class Lexicon:
 
         self.tracks: Tracks = Tracks(self)
         self.playlists: Playlists = Playlists(self)
-        self.playlists.tracks = PlaylistTracks(self, tracks=self.tracks, playlists=self.playlists)
+        self.playlists.tracks = PlaylistTracks(
+            self, tracks=self.tracks, playlists=self.playlists
+        )
         self.tags: Tags = Tags(self)
         self.tags.categories = TagCategories(self)
         self.tools = type("Tools", (), {})()
