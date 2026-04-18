@@ -14,9 +14,17 @@ from .resources.tag_categories import TagCategories
 from .resources.tags import Tags
 from .resources.tracks import Tracks
 from .tools import playlists as playlist_tools
+from .tools import tracks as track_tools
 
 DEFAULT_HOST = os.environ.get("LEXICON_HOST", "localhost")
 LEXICON_PORT = int(os.environ.get("LEXICON_PORT", "48624"))
+
+
+class Tools:
+    """Namespace for helper tools."""
+
+    playlists = playlist_tools
+    tracks = track_tools
 
 
 class Lexicon:
@@ -25,7 +33,7 @@ class Lexicon:
     tracks: Tracks
     playlists: Playlists
     tags: Tags
-    tools: Any
+    tools: Tools
 
     def __init__(
         self,
@@ -70,8 +78,7 @@ class Lexicon:
         )
         self.tags: Tags = Tags(self)
         self.tags.categories = TagCategories(self)
-        self.tools = type("Tools", (), {})()
-        self.tools.playlists = playlist_tools
+        self.tools = Tools()
 
     def request(
         self,
