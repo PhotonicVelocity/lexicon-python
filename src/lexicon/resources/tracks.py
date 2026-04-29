@@ -279,7 +279,7 @@ class Tracks(Resource):
         *,
         source: TrackSource | None = "non-archived",
         fields: Optional[Sequence[TrackField] | Literal["all", "*"]] = None,
-        sort: SortInput,
+        sort: Optional[SortInput] = None,
         validation: ValidationMode = "warn",
         timeout: Optional[int] = None,
     ) -> list[TrackResponse] | None:
@@ -297,7 +297,7 @@ class Tracks(Resource):
             - None returns DEFAULT_TRACK_FIELDS
             - With validation ``"off"``, list is required and None returns all fields
         sort
-            Sort fields and directions
+            Sort fields and directions (optional; defaults to no sort).
             - API native: list of dicts with ``"field"`` and optional ``"dir"`` keys
             - Alternative: list of tuples ``(field, dir)``
         validation

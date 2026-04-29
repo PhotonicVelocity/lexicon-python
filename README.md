@@ -33,7 +33,7 @@ from lexicon import Lexicon
 
 lex = Lexicon()
 
-# list tracks (default fields)
+# list tracks (default fields: id, artist, title, bpm, key, ...)
 tracks = lex.tracks.list(limit=10) or []
 for t in tracks:
     print(t.get("artist"), "-", t.get("title"))
@@ -41,6 +41,9 @@ for t in tracks:
 # search
 results = lex.tracks.search({"artist": "Daft Punk"}) or []
 print("matches:", len(results))
+
+# pass fields="all" for the full payload (tempomarkers, cuepoints, tags, etc.)
+full = lex.tracks.get(123, fields="all")
 
 # get a playlist by path
 playlist = lex.playlists.get_by_path(["Genres", "Drum & Bass"], playlist_type="folder")
@@ -155,6 +158,17 @@ Notes:
 - `fields="all"` or `fields="*"` requests full payloads.
 - `tracks.add()` returns track dicts, but analysis fields (tempo markers, key, etc.)
   may be populated later by Lexicon.
+
+### Track Payload Shapes
+
+Rich-payload fields like `cuepoints` and `tempomarkers` aren't in the default
+field set; request them explicitly (`fields=["cuepoints", "tempomarkers"]`) or
+ask for everything (`fields="all"`). Their shapes are typed via
+`CuePointResponse` and `TempoMarkerResponse`, both re-exported from `lexicon`:
+
+```python
+from lexicon import TrackResponse, TempoMarkerResponse, CuePointResponse
+```
 
 ### Track Search, Filters, and Sort
 
