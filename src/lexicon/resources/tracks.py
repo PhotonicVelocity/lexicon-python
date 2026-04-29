@@ -9,6 +9,7 @@ from .tracks_types import (
     TRACK_SOURCES,
     FilterField,
     SortInput,
+    TempoMarkerUpdate,
     TrackEditField,
     TrackField,
     TrackSource,
@@ -20,6 +21,7 @@ from .tracks_types import (
     _normalize_sorts,
     _cuepoint_type_name,
 )
+from ..tools.tempo import beats_to_seconds, seconds_to_beats
 from ._common_types import ValidationMode, _normalize_id_sequence
 
 
@@ -589,6 +591,76 @@ class Tracks(Resource):
             data = response.get("data")
             updated_id = data.get("id") if isinstance(data, dict) else track_id
         return self.get(updated_id, validation="off", timeout=timeout)
+
+    def update_tempogrid(
+        self,
+        track_id: int,
+        tempomarkers: Sequence[TempoMarkerUpdate],
+        *,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> TrackResponse | None:
+        """Replace a track's tempomarkers while preserving cuepoint beat positions.
+
+        A plain ``update()`` of ``tempomarkers`` leaves cuepoints' ``startTime``
+        (seconds) untouched, which silently shifts every cuepoint to a different
+        beat under the new grid. This method captures each cuepoint's beat
+        position under the OLD tempo grid and rewrites ``startTime`` (and
+        ``endTime``, when set) so the same beat positions are preserved under
+        the NEW grid.
+
+        Parameters
+        ----------
+        track_id
+            Track ID to update.
+        tempomarkers
+            New tempomarkers. Each: ``{"startTime": float, "bpm": float|int}``.
+        validation
+            Validation mode passed through to the underlying ``update()`` call.
+        timeout
+            Timeout in seconds for the underlying requests.
+
+        Returns
+        -------
+        TrackResponse or None
+            Updated track dict, or ``None`` on error.
+        """
+        new_tempomarkers = list(tempomarkers)
+        current = self.get(track_id, timeout=timeout)
+        if current is None:
+            return None
+        old_tempomarkers = current.get("tempomarkers") or []
+        cuepoints = current.get("cuepoints") or []
+
+        edits: TrackUpdate = cast(TrackUpdate, {"tempomarkers": new_tempomarkers})
+
+        if old_tempomarkers and new_tempomarkers and cuepoints:
+            updated_cuepoints: list[dict[str, object]] = []
+            for cp in cuepoints:
+                cp_dict = cast(dict, cp) if isinstance(cp, dict) else None
+                if cp_dict is None or "startTime" not in cp_dict:
+                    if cp_dict is not None:
+                        updated_cuepoints.append(dict(cp_dict))
+                    continue
+                rewritten: dict[str, object] = dict(cp_dict)
+                start_beats = seconds_to_beats(
+                    float(cp_dict["startTime"]), old_tempomarkers
+                )
+                rewritten["startTime"] = beats_to_seconds(
+                    start_beats, new_tempomarkers
+                )
+                end_time = cp_dict.get("endTime")
+                if end_time is not None:
+                    end_beats = seconds_to_beats(float(end_time), old_tempomarkers)
+                    rewritten["endTime"] = beats_to_seconds(
+                        end_beats, new_tempomarkers
+                    )
+                updated_cuepoints.append(rewritten)
+            edits["cuepoints"] = updated_cuepoints  # type: ignore[typeddict-item]
+
+        return self.update(
+            track_id, edits, validation=validation, timeout=timeout
+        )
 
     def add_tags(
         self,

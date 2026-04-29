@@ -147,6 +147,9 @@ tracks = lex.tracks.search({"artist": "Daft Punk"})
 added = lex.tracks.add(["/path/to/file1.mp3", "/path/to/file2.mp3"])
 updated = lex.tracks.update(123, {"title": "New Title"})
 lex.tracks.delete([123, 456])
+
+# Replace tempomarkers while keeping cuepoints anchored to the same beats
+lex.tracks.update_tempogrid(123, [{"startTime": 0.0, "bpm": 124.0}])
 ```
 
 Notes:
@@ -158,6 +161,10 @@ Notes:
 - `fields="all"` or `fields="*"` requests full payloads.
 - `tracks.add()` returns track dicts, but analysis fields (tempo markers, key, etc.)
   may be populated later by Lexicon.
+- `tracks.update_tempogrid()` replaces tempomarkers while preserving each
+  cuepoint's beat position by rewriting `startTime`/`endTime` against the new
+  grid. Use `tracks.update(track_id, {"tempomarkers": [...]})` directly if you
+  want the raw field replacement (cuepoints' seconds stay put, beats shift).
 
 ### Track Payload Shapes
 

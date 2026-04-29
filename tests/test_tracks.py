@@ -752,6 +752,96 @@ class TracksValidationTests(unittest.TestCase):
             result = self.tracks.update(1, {"title": "x"}, validation="warn")
         self.assertFalse(result)
 
+    def test_update_tempogrid_preserves_cuepoint_beats(self):
+        # Old grid: 60 BPM throughout. Cuepoint at 4s is at beat 4.
+        # New grid: 120 BPM throughout. Beat 4 → 2s.
+        old = {
+            "tempomarkers": [{"startTime": 0.0, "bpm": 60.0}],
+            "cuepoints": [
+                {
+                    "position": 0,
+                    "startTime": 4.0,
+                    "type": "manual",
+                    "name": "Drop",
+                }
+            ],
+        }
+        captured_edits: dict[str, object] = {}
+
+        def fake_update(track_id, edits, **kwargs):
+            captured_edits.update(edits)
+            return {"id": track_id}
+
+        with (
+            patch.object(self.tracks, "get", return_value=old),
+            patch.object(self.tracks, "update", side_effect=fake_update),
+        ):
+            result = self.tracks.update_tempogrid(
+                1, [{"startTime": 0.0, "bpm": 120.0}]
+            )
+        self.assertEqual(result, {"id": 1})
+        self.assertIn("cuepoints", captured_edits)
+        cps = captured_edits["cuepoints"]
+        self.assertAlmostEqual(cps[0]["startTime"], 2.0)
+
+    def test_update_tempogrid_preserves_endTime_beats(self):
+        # Loop cuepoint from 4s (beat 4) to 8s (beat 8) under 60 BPM.
+        # Under 120 BPM new grid: beats 4..8 → seconds 2..4.
+        old = {
+            "tempomarkers": [{"startTime": 0.0, "bpm": 60.0}],
+            "cuepoints": [
+                {
+                    "position": 0,
+                    "startTime": 4.0,
+                    "endTime": 8.0,
+                    "activeLoop": True,
+                    "type": "manual",
+                }
+            ],
+        }
+        captured_edits: dict[str, object] = {}
+
+        def fake_update(track_id, edits, **kwargs):
+            captured_edits.update(edits)
+            return {"id": track_id}
+
+        with (
+            patch.object(self.tracks, "get", return_value=old),
+            patch.object(self.tracks, "update", side_effect=fake_update),
+        ):
+            self.tracks.update_tempogrid(1, [{"startTime": 0.0, "bpm": 120.0}])
+        cps = captured_edits["cuepoints"]
+        self.assertAlmostEqual(cps[0]["startTime"], 2.0)
+        self.assertAlmostEqual(cps[0]["endTime"], 4.0)
+
+    def test_update_tempogrid_no_cuepoints(self):
+        old = {
+            "tempomarkers": [{"startTime": 0.0, "bpm": 60.0}],
+            "cuepoints": [],
+        }
+        captured_edits: dict[str, object] = {}
+
+        def fake_update(track_id, edits, **kwargs):
+            captured_edits.update(edits)
+            return {"id": track_id}
+
+        with (
+            patch.object(self.tracks, "get", return_value=old),
+            patch.object(self.tracks, "update", side_effect=fake_update),
+        ):
+            self.tracks.update_tempogrid(1, [{"startTime": 0.0, "bpm": 120.0}])
+        self.assertNotIn("cuepoints", captured_edits)
+        self.assertEqual(
+            captured_edits["tempomarkers"], [{"startTime": 0.0, "bpm": 120.0}]
+        )
+
+    def test_update_tempogrid_returns_none_when_get_fails(self):
+        with patch.object(self.tracks, "get", return_value=None):
+            result = self.tracks.update_tempogrid(
+                1, [{"startTime": 0.0, "bpm": 120.0}]
+            )
+        self.assertIsNone(result)
+
     def test_add_invalid_locations_strict_raises(self):
         with patch.object(self.tracks, "_post") as mocked_post:
             with self.assertRaises(ValueError):
