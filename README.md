@@ -177,6 +177,15 @@ ask for everything (`fields="all"`). Their shapes are typed via
 from lexicon import TrackResponse, TempoMarkerResponse, CuePointResponse
 ```
 
+Color values (cuepoint/tag/etc. `color` fields) are Lexicon-specific name strings
+declared by the `Color` literal type. To convert a name to RGB:
+
+```python
+from lexicon import color_rgb
+
+color_rgb("red_dark")  # → (158, 15, 7)
+```
+
 ### Track Search, Filters, and Sort
 
 `tracks.search(filter=...)` accepts a dict of field names and values. The SDK
