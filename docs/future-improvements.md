@@ -238,6 +238,75 @@ re-exported from the top-level package alongside the existing
 
 ---
 
+### 9. Probe + Document Non-GET Endpoint Return Shapes
+
+**Problem**: lex-py methods that mutate state (PATCH/POST/DELETE) often
+re-fetch the full object after the mutation to return a complete shape to
+callers. The trailing GET is conservative — written before the actual
+return shape of each mutation endpoint was fully understood. In some
+cases the mutation endpoint already returns enough data to skip the
+re-fetch entirely; in others it returns a minimal `{id, edits}` shape
+that genuinely needs the follow-up GET.
+
+The canonical example is `tracks.update_tempogrid(...)`:
+
+1. `GET /v1/track?id=...` — current track (for cuepoint-beat preservation).
+2. `PATCH /v1/track` — apply the update.
+3. `GET /v1/track?id=...` — fetch the updated track to return.
+
+For callers that only need `dateModified` and `tempomarkers` (e.g. a
+sync trigger), step 3 is unnecessary if the PATCH response already
+carries those fields. Today we don't *know* whether it does, because
+the response shape isn't documented or probed.
+
+Other affected methods include `tracks.update()`, `tracks.add()`,
+`playlists.{create, update, delete}`, `cue_points.{add, remove}`, and the
+tag/category mutation methods. Note 8 ("Validate Update Responses Before
+Re-Fetch") flags that the PATCH response shape *already varies* (tag
+edits return `{}`; other edits return `{id, edits}`); that variability
+makes the systematic probe more valuable, not less.
+
+**Solution**: A two-phase pass.
+
+1. **Probe.** Hit each non-GET endpoint against a live Lexicon and
+   capture the response body. Document the shape per endpoint
+   (`docs/non-get-return-shapes.md` or as a section in
+   `docs/api-issues.md`). Useful even on its own — we don't currently
+   have this written down.
+2. **Method audit.** For each lex-py method that does an extra GET
+   after a mutation, decide:
+   - **Drop the GET** — if the mutation response is rich enough on its
+     own, return it directly. Breaking change to method return shape;
+     callers who relied on the post-fetch full record need notice.
+   - **Opt-in flag** — `return_full=True` (default) preserves today's
+     behavior; `return_full=False` returns the mutation response
+     directly. Backwards compatible, opt-in optimization.
+   - **`_fast` variant** — separate method (`update_tempogrid_fast()`)
+     for callers that don't need the full record. Bigger surface, but
+     keeps the canonical method's contract stable.
+
+The first option is cleanest if the shape is uniformly rich; the second
+is cleanest if some callers need the full record post-mutation; the
+third is appropriate if the canonical method's contract is widely
+relied on.
+
+**When it earns its keep**: hot paths in client code that mutate often
+and don't need the full re-fetch (e.g. music-tools' steady-state
+reverse-sync trigger pays a 33% HTTP overhead today on every push for a
+trailing GET it never uses).
+
+**Coordination with note 8**: probe + method audit naturally feed into
+the validation work. Once we have the shape per endpoint documented,
+"validate edits before re-fetch" becomes "validate edits and *also*
+decide whether re-fetch is needed at all."
+
+**Implementation Location**: `docs/api-issues.md` (or new
+`docs/non-get-return-shapes.md`) for the probe artifacts;
+`src/lexicon/resources/tracks.py`, `playlists.py`, `cue_points.py` for
+the method-level changes.
+
+---
+
 ## Far Future (Significant Effort, Strategic Value)
 
 ### 5. Smartlist Builder Helper
