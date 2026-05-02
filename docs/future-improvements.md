@@ -184,6 +184,60 @@ def request(...):
 
 ---
 
+### 4. Update-Payload Constructor Helpers
+
+**Problem**: Update operations take `TypedDict` payloads (`TempoMarkerUpdate`,
+`CuePointUpdate`, etc.). Today callers either build dict literals plus a type
+annotation:
+
+```python
+from lexicon import TempoMarkerUpdate
+markers: list[TempoMarkerUpdate] = [
+    {"startTime": float(s), "bpm": float(b)} for s, b in segments
+]
+```
+
+…or skip the annotation and lose type-checker coverage. Repetitive `float(...)`
+casts and dict literals at every construction site are friction; for `TypedDict`s
+with many optional fields, dict literals are also hard to discover via
+autocomplete.
+
+**Solution**: Constructor helpers, namespaced under `lexicon.types` (or similar):
+
+```python
+from lexicon.types import tempomarker, cuepoint
+
+markers = [tempomarker(s, b) for s, b in segments]
+cues = [
+    cuepoint(start_time=0.0, name="Intro", color=Color.GREEN),
+    cuepoint(start_time=16.0, name="Verse"),
+]
+```
+
+The helpers handle casting (`float(s)`), apply defaults, and return the matching
+`TypedDict`. Callers drop the explicit annotation; type inference flows from the
+helper's return type.
+
+**Tradeoffs**:
+
+- Wins compound at sites that construct many payloads or have many optional
+  fields; sites that construct a single short literal barely benefit.
+- Two ways to do it (raw dict vs helper) — needs clear guidance on which
+  pattern is canonical.
+- Each helper has to track its `TypedDict` if fields change. Consider
+  property-based / round-trip tests pinning helper output to the type shape.
+
+**When it earns its keep**: a `TypedDict` with 8+ optional fields, or one with
+runtime validation needs (range checks, mutual-exclusion). For flat 2-field
+shapes like `TempoMarkerUpdate`, the type-alias-plus-literal pattern is fine
+on its own.
+
+**Implementation Location**: new `src/lexicon/types.py` (or `src/lexicon/builders.py`)
+re-exported from the top-level package alongside the existing
+`TempoMarkerUpdate` / `CuePointUpdate` types.
+
+---
+
 ## Far Future (Significant Effort, Strategic Value)
 
 ### 5. Smartlist Builder Helper
