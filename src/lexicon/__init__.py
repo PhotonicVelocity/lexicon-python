@@ -7,7 +7,9 @@ from .resources.tag_categories_types import TagCategoryResponse
 from .resources.tags_types import TagResponse
 from .resources.tracks_types import (
     CuePointResponse,
+    CuePointUpdate,
     TempoMarkerResponse,
+    TempoMarkerUpdate,
     TrackResponse,
 )
 
@@ -22,5 +24,7 @@ __all__ = [
     "TagResponse",
     "TagCategoryResponse",
     "CuePointResponse",
+    "CuePointUpdate",
     "TempoMarkerResponse",
+    "TempoMarkerUpdate",
 ]
