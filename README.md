@@ -38,12 +38,13 @@ tracks = lex.tracks.list(limit=10) or []
 for t in tracks:
     print(t.get("artist"), "-", t.get("title"))
 
-# search
+# search — pass fields=[...] for a narrow projection, or fields="all" for the
+# full payload (tempomarkers, cuepoints, tags, etc.)
 results = lex.tracks.search({"artist": "Daft Punk"}) or []
 print("matches:", len(results))
 
-# pass fields="all" for the full payload (tempomarkers, cuepoints, tags, etc.)
-full = lex.tracks.get(123, fields="all")
+# get a single track by id — always returns the full record
+full = lex.tracks.get(123)
 
 # get a playlist by path
 playlist = lex.playlists.get_by_path(["Genres", "Drum & Bass"], playlist_type="folder")
@@ -156,9 +157,16 @@ Notes:
 
 - `tracks.search()` results are capped at 1000 by the API.
 - `tracks.get_many()` preserves input order and returns `None` for missing IDs.
-- `fields=None` returns a minimal default set of fields.
-  - In `validation="off"` mode, `fields=None` returns full payloads (API-default)
-- `fields="all"` or `fields="*"` requests full payloads.
+- `tracks.get()` always returns the full record (no `fields` parameter).
+- For `tracks.list()` / `tracks.search()`:
+  - `fields=None` returns a minimal default set.
+    - In `validation="off"` mode, `fields=None` returns the full API payload.
+  - Pass a list of field names for a narrow projection
+    (`fields=["id", "location"]`).
+  - `fields="all"` or `fields="*"` requests the full payload.
+  - Comma-separated strings (e.g. `"id,location"`) are *not* accepted; pass a
+    list. With `validation="warn"` the call falls back to the default field
+    set and logs.
 - `tracks.add()` returns track dicts, but analysis fields (tempo markers, key, etc.)
   may be populated later by Lexicon.
 - `tracks.update_tempogrid()` replaces tempomarkers while preserving each

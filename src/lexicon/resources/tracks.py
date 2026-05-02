@@ -180,9 +180,17 @@ class Tracks(Resource):
             Track source filter (e.g., "non-archived").
         fields
             Fields to include in each track dict.
-            - Use ``"all"`` or ``"*"`` to request all fields from the API.
-            - None returns DEFAULT_TRACK_FIELDS
-            - With validation ``"off"``, list is required and None returns all fields
+            - For a subset, pass a list of field names:
+              ``fields=["id", "location"]``. The API accepts the projection
+              and the response is correspondingly narrower.
+            - Use ``"all"`` or ``"*"`` to request every field the API exposes.
+            - ``None`` returns ``DEFAULT_TRACK_FIELDS`` — a curated default
+              that omits expensive fields like ``cuepoints`` / ``tempomarkers``.
+            - Comma-separated strings (e.g. ``"id,location"``) are *not*
+              accepted; use a list. With validation ``"warn"`` (default) the
+              call falls back to ``DEFAULT_TRACK_FIELDS`` and logs.
+            - With validation ``"off"``, ``None`` returns all fields and a
+              list is passed to the API as-is.
         sort
             Sort fields and directions.
             - API native: list of dicts with ``"field"`` and optional ``"dir"`` keys
@@ -198,6 +206,14 @@ class Tracks(Resource):
         -------
         list of dict | None
             List of track dicts, or ``None`` on API error.
+
+        Examples
+        --------
+        Narrow projection — useful for resolving file paths to ids without
+        pulling tempomarkers, cuepoints, etc.::
+
+            >>> lex.tracks.list(fields=["id", "location"], limit=100)
+            [{"id": 499, "location": "..."}, ...]
         """
         payload: dict[str, object] = {}
 
@@ -294,10 +310,11 @@ class Tracks(Resource):
         source
             Track source filter (e.g., "non-archived").
         fields
-            Fields to include in each track dict.
-            - Use ``"all"`` or ``"*"`` to request all fields from the API.
-            - None returns DEFAULT_TRACK_FIELDS
-            - With validation ``"off"``, list is required and None returns all fields
+            Fields to include in each track dict. Same semantics as
+            :meth:`list` — pass a list (``fields=["id", "location"]``) for a
+            narrow projection, ``"all"``/``"*"`` for everything, ``None`` for
+            ``DEFAULT_TRACK_FIELDS``. Comma-separated strings are *not*
+            accepted.
         sort
             Sort fields and directions (optional; defaults to no sort).
             - API native: list of dicts with ``"field"`` and optional ``"dir"`` keys

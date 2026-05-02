@@ -122,7 +122,10 @@ def _normalize_fields(
     if isinstance(fields, str):
         if fields.lower() in {"all", "*"}:
             return (None, None, None)
-        input_str_error = f"String input must be 'all' or '*': {fields}"
+        input_str_error = (
+            f"String input must be 'all' or '*'; for a subset, pass a list "
+            f"(e.g. ['id', 'location']). Got: {fields!r}"
+        )
         field_list = list(DEFAULT_TRACK_FIELDS)
     elif fields is None:
         field_list = list(DEFAULT_TRACK_FIELDS)
