@@ -1,0 +1,21 @@
+# Pre-commit hooks for lexicon-python.
+#
+# Mirrors the lint job in .github/workflows/ci.yml so contributors catch
+# format/lint issues locally before pushing.
+#
+# Setup (one-time per clone):
+#   uv tool install pre-commit
+#   pre-commit install
+#
+# Then `git commit` runs ruff format + ruff check on staged files; commits
+# with format drift or lint errors are blocked. Run manually any time:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Pin to the same ruff version CI uses; bump together when CI bumps.
+    rev: v0.15.8
+    hooks:
+      - id: ruff-format
+      - id: ruff-check
+        args: [--fix]
