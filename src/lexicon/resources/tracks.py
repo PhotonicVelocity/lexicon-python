@@ -663,21 +663,15 @@ class Tracks(Resource):
                 start_beats = seconds_to_beats(
                     float(cp_dict["startTime"]), old_tempomarkers
                 )
-                rewritten["startTime"] = beats_to_seconds(
-                    start_beats, new_tempomarkers
-                )
+                rewritten["startTime"] = beats_to_seconds(start_beats, new_tempomarkers)
                 end_time = cp_dict.get("endTime")
                 if end_time is not None:
                     end_beats = seconds_to_beats(float(end_time), old_tempomarkers)
-                    rewritten["endTime"] = beats_to_seconds(
-                        end_beats, new_tempomarkers
-                    )
+                    rewritten["endTime"] = beats_to_seconds(end_beats, new_tempomarkers)
                 updated_cuepoints.append(rewritten)
             edits["cuepoints"] = updated_cuepoints  # type: ignore[typeddict-item]
 
-        return self.update(
-            track_id, edits, validation=validation, timeout=timeout
-        )
+        return self.update(track_id, edits, validation=validation, timeout=timeout)
 
     def add_tags(
         self,
