@@ -395,6 +395,26 @@ make format-check       # check formatting
 make format-fix         # auto-fix formatting
 ```
 
+### Pre-commit hook (recommended)
+
+The repo ships a [pre-commit](https://pre-commit.com/) config (`.pre-commit-config.yaml`)
+that mirrors the CI lint job. After cloning, install the hook once:
+
+```bash
+uv tool install pre-commit  # or: pipx install pre-commit
+pre-commit install
+```
+
+`git commit` now runs `ruff format` + `ruff check --fix` on staged files and
+blocks the commit on any failure. Run against the whole repo any time with:
+
+```bash
+pre-commit run --all-files
+```
+
+The ruff version is pinned in `.pre-commit-config.yaml`; bump it when CI
+bumps to keep them aligned.
+
 ### CI
 
 GitHub Actions runs on every push to `main` and on pull requests

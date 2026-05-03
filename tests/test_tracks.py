@@ -776,9 +776,7 @@ class TracksValidationTests(unittest.TestCase):
             patch.object(self.tracks, "get", return_value=old),
             patch.object(self.tracks, "update", side_effect=fake_update),
         ):
-            result = self.tracks.update_tempogrid(
-                1, [{"startTime": 0.0, "bpm": 120.0}]
-            )
+            result = self.tracks.update_tempogrid(1, [{"startTime": 0.0, "bpm": 120.0}])
         self.assertEqual(result, {"id": 1})
         self.assertIn("cuepoints", captured_edits)
         cps = captured_edits["cuepoints"]
@@ -837,9 +835,7 @@ class TracksValidationTests(unittest.TestCase):
 
     def test_update_tempogrid_returns_none_when_get_fails(self):
         with patch.object(self.tracks, "get", return_value=None):
-            result = self.tracks.update_tempogrid(
-                1, [{"startTime": 0.0, "bpm": 120.0}]
-            )
+            result = self.tracks.update_tempogrid(1, [{"startTime": 0.0, "bpm": 120.0}])
         self.assertIsNone(result)
 
     def test_add_invalid_locations_strict_raises(self):
