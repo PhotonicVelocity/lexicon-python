@@ -12,7 +12,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from lexicon.client import Lexicon  # noqa: E402
+from lexicon.client import Lexicon, LexiconConnectionError  # noqa: E402
 
 
 logging.basicConfig(
@@ -56,7 +56,12 @@ class ClientTests(unittest.TestCase):
     def test_request_path_normalization(self):
         response = FakeResponse(json_payload={"ok": True})
         session = FakeSession(response)
-        client = Lexicon(host="example.com", port=1234, session=session)
+        client = Lexicon(
+            host="example.com",
+            port=1234,
+            session=session,
+            verify_connection=False,
+        )
         client.request("GET", "tracks")
         self.assertEqual(len(session.calls), 1)
         method, url, params, json, timeout = session.calls[0]
@@ -69,26 +74,31 @@ class ClientTests(unittest.TestCase):
     def test_request_keeps_v1_prefix(self):
         response = FakeResponse(json_payload={"ok": True})
         session = FakeSession(response)
-        client = Lexicon(host="example.com", port=1234, session=session)
+        client = Lexicon(
+            host="example.com",
+            port=1234,
+            session=session,
+            verify_connection=False,
+        )
         client.request("GET", "/v1/tracks")
         self.assertEqual(session.calls[0][1], "http://example.com:1234/v1/tracks")
 
     def test_request_empty_body_returns_none(self):
         response = FakeResponse(content=b"")
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_non_json_returns_none(self):
         response = FakeResponse(content=b"not json", json_error=True)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_json_dict_and_list(self):
         response = FakeResponse(json_payload={"data": 1})
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertEqual(client.request("GET", "/tracks"), {"data": 1})
         response._json_payload = [1, 2]
         self.assertEqual(client.request("GET", "/tracks"), [1, 2])
@@ -99,42 +109,42 @@ class ClientTests(unittest.TestCase):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_payload={"message": "problem"}, status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_uses_error_field(self):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_payload={"error": "nope"}, status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_uses_detail_field(self):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_payload={"detail": "nope"}, status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_with_unexpected_json(self):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_payload={"other": "nope"}, status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_with_non_dict_json(self):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_payload=["nope"], status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_bad_json_body(self):
         error = requests.HTTPError("bad")
         response = FakeResponse(json_error=True, status_error=error)
         session = FakeSession(response)
-        client = Lexicon(session=session)
+        client = Lexicon(session=session, verify_connection=False)
         self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_http_error_raises_when_enabled(self):
@@ -144,20 +154,53 @@ class ClientTests(unittest.TestCase):
             status_error=error,
         )
         session = FakeSession(response)
-        client = Lexicon(session=session, raise_on_error=True)
+        client = Lexicon(session=session, raise_on_error=True, verify_connection=False)
         with self.assertRaises(requests.HTTPError):
             client.request("GET", "/tracks")
 
     def test_request_other_exception_returns_none(self):
-        client = Lexicon()
+        client = Lexicon(verify_connection=False)
         with patch("lexicon.client.requests.request", side_effect=RuntimeError("boom")):
             self.assertIsNone(client.request("GET", "/tracks"))
 
     def test_request_other_exception_raises_when_enabled(self):
-        client = Lexicon(raise_on_error=True)
+        client = Lexicon(raise_on_error=True, verify_connection=False)
         with patch("lexicon.client.requests.request", side_effect=RuntimeError("boom")):
             with self.assertRaises(RuntimeError):
                 client.request("GET", "/tracks")
+
+    def test_verify_connection_success_logs_info(self):
+        response = FakeResponse(json_payload={"data": None})
+        session = FakeSession(response)
+        with self.assertLogs("lexicon.client", level="INFO") as ctx:
+            client = Lexicon(host="example.com", port=1234, session=session)
+        self.assertEqual(len(session.calls), 1)
+        method, url, _, _, _ = session.calls[0]
+        self.assertEqual(method, "GET")
+        self.assertEqual(url, "http://example.com:1234/v1/playing")
+        self.assertTrue(
+            any("Connected to Lexicon" in message for message in ctx.output),
+            ctx.output,
+        )
+        # Sanity: still a working client after the probe.
+        self.assertEqual(client.host, "example.com")
+
+    def test_verify_connection_connection_error_raises(self):
+        session = FakeSession(FakeResponse())
+        session.request = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            requests.ConnectionError("refused")
+        )
+        with self.assertRaises(LexiconConnectionError) as ctx:
+            Lexicon(host="example.com", port=1234, session=session)
+        self.assertIn("example.com:1234", str(ctx.exception))
+        self.assertIn("Local API", str(ctx.exception))
+
+    def test_verify_connection_http_error_raises(self):
+        error = requests.HTTPError("500")
+        response = FakeResponse(status_error=error)
+        session = FakeSession(response)
+        with self.assertRaises(LexiconConnectionError):
+            Lexicon(session=session)
 
 
 if __name__ == "__main__":

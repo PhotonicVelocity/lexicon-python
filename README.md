@@ -2,9 +2,9 @@
 
 Python client for the Lexicon DJ Local API.
 
-This SDK wraps the Lexicon Local API with resource groups, sensible defaults, and
-optional validation. It is designed for scripting library automation, playlist
-management, and metadata edits while keeping a clean escape hatch to the raw API.
+This SDK wraps the Lexicon Local API with resource groups, sensible defaults, and optional validation. It is designed
+for scripting library automation, playlist management, and metadata edits while keeping a clean escape hatch to the raw
+API.
 
 ## Features
 
@@ -31,7 +31,7 @@ pip install lexicon-python
 ```python
 from lexicon import Lexicon
 
-lex = Lexicon()
+lex = Lexicon()  # verifies the API is reachable; raises LexiconConnectionError otherwise
 
 # list tracks (default fields: id, artist, title, bpm, key, ...)
 tracks = lex.tracks.list(limit=10) or []
@@ -69,6 +69,8 @@ Other options:
 - `default_timeout`: request timeout in seconds
 - `session`: optional `requests.Session`
 - `raise_on_error`: raise HTTP errors instead of returning None
+- `verify_connection` (default `True`): probe the API on construction and raise `LexiconConnectionError` if Lexicon
+  isn't reachable. Set to `False` to build a client without a running Lexicon (e.g. for tests).
 
 Environment variables:
 
@@ -81,8 +83,8 @@ export LEXICON_PORT=48624
 
 Many methods accept a `validation` parameter with three modes:
 
-- `"warn"` (default): invalid inputs are skipped with a warning. This avoids API
-  failures, but intended changes may be ignored.
+- `"warn"` (default): invalid inputs are skipped with a warning. This avoids API failures, but intended changes may be
+  ignored.
 - `"strict"`: invalid inputs raise `ValueError`.
 - `"off"`: skips normalization and sends inputs as-is (inputs must match API-native shapes)
 
@@ -96,9 +98,8 @@ lex.tracks.search({"rating": "bad"}, validation="off")    # sends as-is
 
 ## Convenience vs Raw API
 
-This SDK adds several quality-of-life behaviors on top of the raw Lexicon API.
-In general, response shapes are unwrapped (e.g., `"data": {...}` is removed and
-single-item lists are collapsed to a single dict).
+This SDK adds several quality-of-life behaviors on top of the raw Lexicon API. In general, response shapes are unwrapped
+(e.g., `"data": {...}` is removed and single-item lists are collapsed to a single dict).
 
 ### Additional Methods (Not in the Raw API)
 
@@ -111,28 +112,25 @@ single-item lists are collapsed to a single dict).
 
 ### Input Normalization (Broader Accepted Inputs)
 
-- **ID normalization**: Many methods accept lists of IDs instead of a single ID
-  for easier batch operations.
-- **Field selection**: By default, `tracks.list()` and `tracks.search()` return a
-  minimal set of fields rather than the full payload:
-    - `id`, `artist`, `title`, `albumTitle`, `bpm`, `key`, `duration`, `year`
-    - Fields used as a search filter or sort item are also returned.
+- **ID normalization**: Many methods accept lists of IDs instead of a single ID for easier batch operations.
+- **Field selection**: By default, `tracks.list()` and `tracks.search()` return a minimal set of fields rather than the
+  full payload:
+  - `id`, `artist`, `title`, `albumTitle`, `bpm`, `key`, `duration`, `year`
+  - Fields used as a search filter or sort item are also returned.
 - **Search filter normalization**:
   - Text fields accept `None` (becomes `"NONE"` in filter context).
   - Numeric filters accept `None` (becomes `"0"`).
-  - Date filters accept `YYYY-MM-DD`, full datetime strings, or `datetime.date` /
-    `datetime.datetime` inputs (time is stripped).
-      - Comparisons (`>YYYY-MM-DD`) are warned/blocked because the API currently ignores them.
+  - Date filters accept `YYYY-MM-DD`, full datetime strings, or `datetime.date` / `datetime.datetime` inputs (time is
+    stripped).
+    - Comparisons (`>YYYY-MM-DD`) are warned/blocked because the API currently ignores them.
 - **Sort normalization**:
   - Accepts tuple shorthand: `[("title", "asc")]`.
 - **Track update helpers**:
-  - Cuepoint and tempomarker entries are normalized (e.g., cuepoint type accepts
-    name/number variants).
+  - Cuepoint and tempomarker entries are normalized (e.g., cuepoint type accepts name/number variants).
   - Invalid entries can be skipped in `"warn"` mode without failing the update.
 
-If no SDK normalization is desired, use `validation="off"` and pass
-API-native payloads. API-native shapes are also accepted in `"warn"`/`"strict"`;
-those modes simply add normalization/validation on top. For fully raw access,
+If no SDK normalization is desired, use `validation="off"` and pass API-native payloads. API-native shapes are also
+accepted in `"warn"`/`"strict"`; those modes simply add normalization/validation on top. For fully raw access,
 `lex.request(...)` can always be called directly.
 
 ## Tracks
@@ -161,32 +159,27 @@ Notes:
 - For `tracks.list()` / `tracks.search()`:
   - `fields=None` returns a minimal default set.
     - In `validation="off"` mode, `fields=None` returns the full API payload.
-  - Pass a list of field names for a narrow projection
-    (`fields=["id", "location"]`).
+  - Pass a list of field names for a narrow projection (`fields=["id", "location"]`).
   - `fields="all"` or `fields="*"` requests the full payload.
-  - Comma-separated strings (e.g. `"id,location"`) are *not* accepted; pass a
-    list. With `validation="warn"` the call falls back to the default field
-    set and logs.
-- `tracks.add()` returns track dicts, but analysis fields (tempo markers, key, etc.)
-  may be populated later by Lexicon.
-- `tracks.update_tempogrid()` replaces tempomarkers while preserving each
-  cuepoint's beat position by rewriting `startTime`/`endTime` against the new
-  grid. Use `tracks.update(track_id, {"tempomarkers": [...]})` directly if you
+  - Comma-separated strings (e.g. `"id,location"`) are _not_ accepted; pass a list. With `validation="warn"` the call
+    falls back to the default field set and logs.
+- `tracks.add()` returns track dicts, but analysis fields (tempo markers, key, etc.) may be populated later by Lexicon.
+- `tracks.update_tempogrid()` replaces tempomarkers while preserving each cuepoint's beat position by rewriting
+  `startTime`/`endTime` against the new grid. Use `tracks.update(track_id, {"tempomarkers": [...]})` directly if you
   want the raw field replacement (cuepoints' seconds stay put, beats shift).
 
 ### Track Payload Shapes
 
-Rich-payload fields like `cuepoints` and `tempomarkers` aren't in the default
-field set; request them explicitly (`fields=["cuepoints", "tempomarkers"]`) or
-ask for everything (`fields="all"`). Their shapes are typed via
+Rich-payload fields like `cuepoints` and `tempomarkers` aren't in the default field set; request them explicitly
+(`fields=["cuepoints", "tempomarkers"]`) or ask for everything (`fields="all"`). Their shapes are typed via
 `CuePointResponse` and `TempoMarkerResponse`, both re-exported from `lexicon`:
 
 ```python
 from lexicon import TrackResponse, TempoMarkerResponse, CuePointResponse
 ```
 
-Color values (cuepoint/tag/etc. `color` fields) are Lexicon-specific name strings
-declared by the `Color` literal type. To convert a name to RGB:
+Color values (cuepoint/tag/etc. `color` fields) are Lexicon-specific name strings declared by the `Color` literal type.
+To convert a name to RGB:
 
 ```python
 from lexicon import color_rgb
@@ -196,9 +189,8 @@ color_rgb("red_dark")  # → (158, 15, 7)
 
 ### Track Search, Filters, and Sort
 
-`tracks.search(filter=...)` accepts a dict of field names and values. The SDK
-validates fields/values in `"warn"`/`"strict"` modes and can send API-native values
-in `"off"` mode.
+`tracks.search(filter=...)` accepts a dict of field names and values. The SDK validates fields/values in
+`"warn"`/`"strict"` modes and can send API-native values in `"off"` mode.
 
 Examples:
 
@@ -256,6 +248,7 @@ Playlist type accepts:
 - `1`, `2`, `3` (or string numerals `"1"`, `"2"`, `"3"`)
 
 ### Playlist tracks helpers
+
 For getting the tracks of a playlist or editing the tracklist.
 
 ```python
@@ -309,6 +302,7 @@ print(path)
 ```
 
 ## Raw Requests (Escape Hatch)
+
 The API can always be accessed directly with `lex.request`:
 
 ```python
@@ -327,8 +321,8 @@ High level namespaces (full mapping in `docs/resource-map.md`):
 
 ## Type Hints
 
-The SDK includes TypedDict and Literal types for payloads and enums. These are
-intended to improve editor autocomplete and static checks.
+The SDK includes TypedDict and Literal types for payloads and enums. These are intended to improve editor autocomplete
+and static checks.
 
 For full payload schemas and endpoint details, refer to the Lexicon API docs:
 
@@ -339,10 +333,10 @@ For full payload schemas and endpoint details, refer to the Lexicon API docs:
 
 ### Setup
 
-#### Pip 
+#### Pip
 
-Ensure that you have Python 3.9+ installed locally.
-To install all runtime and dev dependencies into a local virtual environment using pip:
+Ensure that you have Python 3.9+ installed locally. To install all runtime and dev dependencies into a local virtual
+environment using pip:
 
 ```bash
 python -m venv .venv
@@ -352,7 +346,8 @@ pip install -e ".[dev]"
 
 #### uv
 
-To use [uv](https://docs.astral.sh/uv/) to install all runtime and dev dependencies into a local virtual environment, simply install `uv` and run:
+To use [uv](https://docs.astral.sh/uv/) to install all runtime and dev dependencies into a local virtual environment,
+simply install `uv` and run:
 
 ```bash
 uv sync --dev
@@ -374,11 +369,10 @@ make run-integration-tests
 
 ### Linting and Formatting
 
-The project uses [ruff](https://docs.astral.sh/ruff/) for both linting and
-formatting.
+The project uses [ruff](https://docs.astral.sh/ruff/) for both linting and formatting.
 
-`make test` runs the full suite: format, lint (with auto-fix), then tests.
-`make fix` runs all auto-fixers (lint + format) without running tests.
+`make test` runs the full suite: format, lint (with auto-fix), then tests. `make fix` runs all auto-fixers (lint +
+format) without running tests.
 
 ```bash
 make test               # format-fix → lint-fix → format-check → lint-check → tests
@@ -397,28 +391,26 @@ make format-fix         # auto-fix formatting
 
 ### Pre-commit hook (recommended)
 
-The repo ships a [pre-commit](https://pre-commit.com/) config (`.pre-commit-config.yaml`)
-that mirrors the CI lint job. After cloning, install the hook once:
+The repo ships a [pre-commit](https://pre-commit.com/) config (`.pre-commit-config.yaml`) that mirrors the CI lint job.
+After cloning, install the hook once:
 
 ```bash
 uv tool install pre-commit  # or: pipx install pre-commit
 pre-commit install
 ```
 
-`git commit` now runs `ruff format` + `ruff check --fix` on staged files and
-blocks the commit on any failure. Run against the whole repo any time with:
+`git commit` now runs `ruff format` + `ruff check --fix` on staged files and blocks the commit on any failure. Run
+against the whole repo any time with:
 
 ```bash
 pre-commit run --all-files
 ```
 
-The ruff version is pinned in `.pre-commit-config.yaml`; bump it when CI
-bumps to keep them aligned.
+The ruff version is pinned in `.pre-commit-config.yaml`; bump it when CI bumps to keep them aligned.
 
 ### CI
 
-GitHub Actions runs on every push to `main` and on pull requests
-targeting those branches. The pipeline includes:
+GitHub Actions runs on every push to `main` and on pull requests targeting those branches. The pipeline includes:
 
 - **Tests** across Python 3.9, 3.10, 3.11, and 3.12
 - **Lint and format checks** via ruff on Python 3.12
@@ -427,9 +419,8 @@ Before opening a PR, make sure `make test` passes locally.
 
 ### Pull Requests
 
-A PR template is provided at `.github/pull_request_template.md`. When opening a
-PR, fill in the description, check the relevant change-type boxes, and confirm
-testing/checklist items.
+A PR template is provided at `.github/pull_request_template.md`. When opening a PR, fill in the description, check the
+relevant change-type boxes, and confirm testing/checklist items.
 
 ## License
 

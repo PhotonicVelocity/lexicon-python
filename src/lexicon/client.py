@@ -20,6 +20,10 @@ DEFAULT_HOST = os.environ.get("LEXICON_HOST", "localhost")
 LEXICON_PORT = int(os.environ.get("LEXICON_PORT", "48624"))
 
 
+class LexiconConnectionError(ConnectionError):
+    """Raised when the client cannot reach the Lexicon Local API on construction."""
+
+
 class Tools:
     """Namespace for helper tools."""
 
@@ -44,6 +48,7 @@ class Lexicon:
         session: Optional[requests.Session] = None,
         raise_on_error: bool = False,
         raw_enums: bool = True,
+        verify_connection: bool = True,
     ) -> None:
         """Create a Lexicon client bound to an API instance.
 
@@ -62,6 +67,10 @@ class Lexicon:
         raw_enums
             If True (default), return API enum values as raw codes (e.g. ``"1"``).
             If False, convert to human-readable names (e.g. ``"normal"``).
+        verify_connection
+            If True (default), probe the Lexicon API on construction and raise
+            :class:`LexiconConnectionError` if it isn't reachable. Set to False
+            to construct without a running Lexicon (e.g. for tests).
         """
         self.host = host or DEFAULT_HOST
         self.port = int(port or LEXICON_PORT)
@@ -79,6 +88,33 @@ class Lexicon:
         self.tags: Tags = Tags(self)
         self.tags.categories = TagCategories(self)
         self.tools = Tools()
+
+        if verify_connection:
+            self._verify_connection()
+
+    def _verify_connection(self) -> None:
+        """Probe the Lexicon API to confirm it's reachable.
+
+        Sends a single ``GET /v1/playing`` request, bypassing the swallow-and-warn
+        behavior of :meth:`request`. Logs at INFO on success; raises
+        :class:`LexiconConnectionError` on any failure.
+        """
+        url = f"http://{self.host}:{self.port}/v1/playing"
+        requester = self._session or requests
+        try:
+            response = requester.request("GET", url, timeout=self.default_timeout)
+            response.raise_for_status()
+        except (
+            requests.ConnectionError,
+            requests.Timeout,
+            requests.HTTPError,
+        ) as exc:
+            raise LexiconConnectionError(
+                f"Could not reach Lexicon at {self.host}:{self.port} "
+                f"({exc.__class__.__name__}: {exc}). "
+                "Is Lexicon running with the Local API enabled?"
+            ) from exc
+        self._logger.info("Connected to Lexicon at %s:%s", self.host, self.port)
 
     def request(
         self,
