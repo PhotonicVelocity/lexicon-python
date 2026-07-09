@@ -482,6 +482,48 @@ Could also support `add_tags` / `remove_tags` variants for partial updates.
 
 ---
 
+### 10. `[interactive]` Package Extra + `choose_playlist` Docstring
+
+**Problem**: `lexicon.tools.playlists.choose_playlist()` imports InquirerPy
+lazily inside the function and raises a `RuntimeError` at call time if it's
+missing:
+
+```python
+try:
+    from InquirerPy.resolver import prompt
+except ImportError as exc:
+    raise RuntimeError("InquirerPy is required for choose_playlist.") from exc
+```
+
+InquirerPy is not a runtime dependency of `lexicon-python` itself, which is
+correct (it's a heavy TTY dep most users don't need). But:
+
+1. The `choose_playlist` docstring doesn't call out the InquirerPy requirement,
+   so callers only discover it when they run the interactive picker for the
+   first time.
+2. There's no `pip install lexicon-python[interactive]` extra — users have to
+   `pip install InquirerPy` separately and know to do so.
+
+**Solution**: Two small fixes, both surface-level:
+
+1. **Add an `interactive` extra to `pyproject.toml`** under
+   `[project.optional-dependencies]`, pinning InquirerPy at the version the
+   picker code was written against. Callers who want the picker do
+   `pip install lexicon-python[interactive]` (or `uv add
+   lexicon-python --extra interactive`) — one command, no version-guessing.
+2. **Update the `choose_playlist` docstring** to mention the requirement and
+   point at the extra. IDE tooltips + `help()` then surface it upfront rather
+   than at first `RuntimeError`.
+
+**When it earns its keep**: any downstream consumer that ships the interactive
+picker as a documented feature (e.g. music-tools' `add_lexicon` CLI picker).
+Also a small polish win for `help(lex.tools.playlists.choose_playlist)`.
+
+**Implementation Location**: `pyproject.toml` (`[project.optional-dependencies]`),
+`src/lexicon/tools/playlists.py` (docstring of `choose_playlist`).
+
+---
+
 ## Notes
 
 - All features should maintain backward compatibility
