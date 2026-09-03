@@ -9,6 +9,7 @@ On other platforms, the user is prompted to quit/launch Lexicon manually.
 Note: The Lexicon local API must be enabled in Lexicon settings for tests to connect.
 """
 
+import math
 import os
 import platform
 import struct
@@ -210,6 +211,65 @@ def create_audio_file():
     def _create(name: str, duration_s: float = 8.0) -> Path:
         path = TEST_DIR / name
         _create_silent_wav(path, duration_s)
+        created.append(path)
+        return path
+
+    yield _create
+
+    for path in created:
+        path.unlink(missing_ok=True)
+
+
+def _create_click_wav(path: Path, duration_s: float = 8.0, bpm: int = 120) -> Path:
+    """Create a WAV file with one click per beat at the given tempo.
+
+    Lexicon's beatgrid analyzer needs transients; a silent file yields no
+    tempomarkers. Each click is a 5 ms full-scale 1 kHz burst with a linear
+    decay, followed by silence until the next beat.
+    """
+    sample_rate = 48000
+    channels = 1
+    sample_width = 2  # 16-bit
+    click_ms = 5
+    click_hz = 1000
+    peak = 32767
+    click_frames = int(sample_rate * click_ms / 1000)
+    beat_frames = int(sample_rate * 60 / bpm)
+    total_frames = int(duration_s * sample_rate)
+
+    click = b"".join(
+        struct.pack(
+            "<h",
+            int(
+                peak
+                * (1.0 - frame / click_frames)
+                * math.sin(2 * math.pi * click_hz * frame / sample_rate)
+            ),
+        )
+        for frame in range(click_frames)
+    )
+    beat = click + struct.pack("<h", 0) * (beat_frames - click_frames)
+
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        frames_written = 0
+        while frames_written < total_frames:
+            frames = min(beat_frames, total_frames - frames_written)
+            wf.writeframes(beat[: frames * sample_width])
+            frames_written += frames
+    return path
+
+
+@pytest.fixture(scope="session")
+def create_click_file():
+    """Factory fixture that creates click-track WAV files and cleans them up after."""
+    created: list[Path] = []
+
+    def _create(name: str, duration_s: float = 8.0, bpm: int = 120) -> Path:
+        path = TEST_DIR / name
+        _create_click_wav(path, duration_s, bpm)
         created.append(path)
         return path
 

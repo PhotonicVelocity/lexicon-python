@@ -1,8 +1,13 @@
 """Integration tests for track operations."""
 
+import time
+
 import pytest
 
 pytestmark = pytest.mark.integration
+
+ANALYZE_TIMEOUT_S = 90
+ANALYZE_POLL_INTERVAL_S = 1
 
 
 def test_add_track(lexicon, create_audio_file):
@@ -189,6 +194,46 @@ def test_search_tracks(lexicon):
     assert results is not None
     assert len(results) >= 1
     assert results[0].get("title") == "IntTest Title"
+
+
+def test_analyze_track(lexicon, create_click_file):
+    """Analyzing a click track should produce tempomarkers and a bpm."""
+    audio = create_click_file("test_analyze_track.wav", bpm=120)
+    added = lexicon.tracks.add([str(audio)])
+    assert added
+    track_id = added[0]["id"]
+
+    assert (
+        lexicon.tracks.analyze(
+            [track_id],
+            analyze_key=True,
+            analyze_beatgrid=True,
+            analyze_waveform=True,
+            analyze_energy=True,
+            do_not_overwrite=False,
+        )
+        is True
+    )
+
+    # The API returns as soon as Lexicon accepts the request and gives no
+    # completion signal, so poll until tempomarkers appear.
+    deadline = time.time() + ANALYZE_TIMEOUT_S
+    track = None
+    while time.time() < deadline:
+        track = lexicon.tracks.get(track_id)
+        markers = track.get("tempomarkers") if track else None
+        if isinstance(markers, list) and markers:
+            break
+        time.sleep(ANALYZE_POLL_INTERVAL_S)
+    else:
+        pytest.fail(
+            f"Track {track_id} had no tempomarkers after {ANALYZE_TIMEOUT_S}s; "
+            f"last response was {track}"
+        )
+
+    bpm = track["bpm"]
+    assert isinstance(bpm, (int, float)), f"bpm was {bpm!r}"
+    assert bpm > 0
 
 
 def test_delete_track(lexicon):
