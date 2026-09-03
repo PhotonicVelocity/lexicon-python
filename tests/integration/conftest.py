@@ -1,126 +1,38 @@
 """Integration test fixtures for Lexicon API.
 
-Manages Lexicon app lifecycle and database state so integration tests
-run against a clean, empty library.
-
-On macOS, Lexicon is quit/launched automatically via AppleScript.
-On other platforms, the user is prompted to quit/launch Lexicon manually.
+Provides a Lexicon client against a library emptied for the run, plus factories
+for the audio files the tests add. The app and database lifecycle these fixtures
+drive lives in lifecycle.py.
 
 Note: The Lexicon local API must be enabled in Lexicon settings for tests to connect.
 """
 
 import math
-import os
-import platform
 import struct
-import subprocess
-import time
 import wave
 from pathlib import Path
 
 import pytest
-import requests
 
-from lexicon import Lexicon, LEXICON_PORT, DEFAULT_HOST
+from lexicon import Lexicon
 
-IS_MACOS = platform.system() == "Darwin"
+from . import lifecycle
+from .lifecycle import (
+    IS_MACOS,
+    IS_WINDOWS,
+    backup_db,
+    clear_db,
+    is_api_ready,
+    launch_lexicon,
+    quit_lexicon,
+    restore_db,
+)
 
-IS_WINDOWS = platform.system() == "Windows"
-
-if IS_MACOS:
-    LEXICON_DATA_DIR = os.path.expanduser("~/Library/Application Support/lexicon")
-elif IS_WINDOWS:
-    LEXICON_DATA_DIR = os.path.join(os.environ.get("APPDATA", ""), "Lexicon")
-else:
-    LEXICON_DATA_DIR = os.environ.get("LEXICON_DATA_DIR", "")
-    if not LEXICON_DATA_DIR:
-        pytest.skip(
-            "Set LEXICON_DATA_DIR environment variable to the Lexicon data directory",
-            allow_module_level=True,
-        )
-
-MAIN_DB_PATH = os.path.join(LEXICON_DATA_DIR, "main.db")
-DB_BACKUP_PATH = os.path.join(LEXICON_DATA_DIR, "main.db.integration-backup")
-API_URL = f"http://{DEFAULT_HOST}:{LEXICON_PORT}/v1/tracks"
-LEXICON_APP_NAME = "Lexicon"
-
-STARTUP_TIMEOUT = 10
-SHUTDOWN_TIMEOUT = 10
-POLL_INTERVAL = 1
-
-
-def _is_api_ready() -> bool:
-    """Check if the Lexicon API is responding."""
-    try:
-        resp = requests.get(API_URL, timeout=2)
-        return resp.status_code in (200, 400)
-    except (requests.ConnectionError, requests.Timeout):
-        return False
-
-
-def _wait_for_api(ready: bool, timeout: int):
-    """Poll until the API matches the expected state."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _is_api_ready() == ready:
-            return
-        time.sleep(POLL_INTERVAL)
-    if ready:
-        raise TimeoutError(
-            "Lexicon API did not become ready in time. "
-            "Make sure the local API is enabled in Lexicon settings."
-        )
-    raise TimeoutError(
-        "Lexicon did not shut down in time. Please close it manually and re-run."
+if not IS_MACOS and not IS_WINDOWS and lifecycle.LEXICON_DATA_DIR == "":
+    pytest.skip(
+        "Set LEXICON_DATA_DIR environment variable to the Lexicon data directory",
+        allow_module_level=True,
     )
-
-
-def _quit_lexicon():
-    """Quit Lexicon. Uses AppleScript on macOS, prompts otherwise."""
-    if IS_MACOS:
-        subprocess.run(
-            ["osascript", "-e", f'tell application "{LEXICON_APP_NAME}" to quit'],
-            capture_output=True,
-        )
-    else:
-        input("Please quit Lexicon, then press Enter...")
-    _wait_for_api(ready=False, timeout=SHUTDOWN_TIMEOUT)
-
-
-def _launch_lexicon():
-    """Launch Lexicon. Uses `open` on macOS, prompts otherwise."""
-    if IS_MACOS:
-        time.sleep(1)  # Allow Lexicon to fully exit before relaunching
-        subprocess.run(
-            ["open", "-a", LEXICON_APP_NAME],
-            capture_output=True,
-        )
-    else:
-        input("Please launch Lexicon, then press Enter...")
-    _wait_for_api(ready=True, timeout=STARTUP_TIMEOUT)
-
-
-def _backup_db():
-    """Back up the current main.db by renaming it."""
-    if os.path.islink(MAIN_DB_PATH) or os.path.exists(MAIN_DB_PATH):
-        os.rename(MAIN_DB_PATH, DB_BACKUP_PATH)
-    else:
-        raise FileNotFoundError(f"No database found at {MAIN_DB_PATH}")
-
-
-def _restore_db():
-    """Restore the original main.db from backup."""
-    if not os.path.exists(DB_BACKUP_PATH) and not os.path.islink(DB_BACKUP_PATH):
-        return
-    if os.path.islink(MAIN_DB_PATH) or os.path.exists(MAIN_DB_PATH):
-        os.remove(MAIN_DB_PATH)
-    os.rename(DB_BACKUP_PATH, MAIN_DB_PATH)
-
-
-def _clear_db():
-    """Remove main.db so Lexicon creates a fresh library on launch."""
-    if os.path.islink(MAIN_DB_PATH) or os.path.exists(MAIN_DB_PATH):
-        os.remove(MAIN_DB_PATH)
 
 
 @pytest.fixture(scope="session")
@@ -142,25 +54,26 @@ def lexicon():
             3. Relaunches Lexicon
     """
     swapped = False
-    client = Lexicon()
 
-    # Check if already running with an empty library
-    if _is_api_ready():
+    # Check if already running with an empty library. Lexicon() verifies the
+    # connection on construction, so it is only built once the API answers.
+    if is_api_ready():
+        client = Lexicon()
         tracks = client.tracks.list()
         if not tracks or len(tracks) == 0:
             yield client
             return
 
     # Need to swap — library is populated or Lexicon isn't running
-    was_running = _is_api_ready()
+    was_running = is_api_ready()
     if was_running:
-        _quit_lexicon()
-    _backup_db()
-    _clear_db()
+        quit_lexicon()
+    backup_db()
+    clear_db()
     swapped = True
 
     try:
-        _launch_lexicon()
+        launch_lexicon()
         client = Lexicon()
 
         # Guard: verify the library is empty
@@ -174,10 +87,10 @@ def lexicon():
         yield client
     finally:
         if swapped:
-            _quit_lexicon()
-            _restore_db()
+            quit_lexicon()
+            restore_db()
             if was_running:
-                _launch_lexicon()
+                launch_lexicon()
 
 
 TEST_DIR = Path(__file__).resolve().parent
