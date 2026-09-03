@@ -1628,6 +1628,7 @@ components:
         - Application_Tags_ToggleShortcut
         - Application_Tags_Clear
         - MusicPlayer_LoadSelected
+        - MusicPlayer_Load
         - MusicPlayer_Play
         - MusicPlayer_Next
         - MusicPlayer_Pause
@@ -1668,6 +1669,7 @@ components:
         - TrackBrowser_FocusFilter
         - TrackBrowser_ClearFilter
         - TrackBrowser_Analyze
+        - TrackBrowser_AnalyzeStart
         - TrackBrowser_ReloadTags
         - TrackBrowser_CuePointGenerator
         - TrackBrowser_Discovery
