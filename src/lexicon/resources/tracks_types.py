@@ -34,6 +34,8 @@ __all__ = [
     "CuePointUpdate",
     "TempoMarkerResponse",
     "TempoMarkerUpdate",
+    "TempoRange",
+    "TEMPO_RANGES",
     "FilterField",
     "SortField",
 ]
@@ -43,6 +45,20 @@ __all__ = [
 # Track source filters for list and search endpoints
 TrackSource = Literal["non-archived", "all", "archived", "incoming"]
 TRACK_SOURCES: tuple[TrackSource, ...] = get_args(TrackSource)
+
+# The tempo-range ids the analyze dialog's dropdown stores.
+# "0_300" is labelled "Any" and "180_300" is labelled "180+".
+TempoRange = Literal[
+    "0_300",
+    "58_115",
+    "68_135",
+    "78_155",
+    "88_175",
+    "98_195",
+    "128_255",
+    "180_300",
+]
+TEMPO_RANGES: tuple[TempoRange, ...] = get_args(TempoRange)
 
 
 # region --- AVAILABLE FIELDS ---
@@ -865,6 +881,46 @@ def _normalize_tempomarkers(
 
         normalized_tempomarkers.append({"startTime": start_time, "bpm": bpm})
     return normalized_tempomarkers, errors
+
+
+def _normalize_tempo_range(value: object) -> TempoRange | None:
+    """Normalize an analysis tempo range to one of Lexicon's dropdown presets.
+
+    Parameters
+    ----------
+    value
+        A preset id string, or a ``(min, max)`` tuple or list of ints whose
+        ``"<min>_<max>"`` form is a preset id.
+
+    Returns
+    -------
+    TempoRange | None
+        One of ``"0_300"`` (Any), ``"58_115"``, ``"68_135"``, ``"78_155"``,
+        ``"88_175"``, ``"98_195"``, ``"128_255"``, ``"180_300"`` (180+), or
+        ``None`` when the input is not a preset.
+
+    Notes
+    -----
+    Non-preset ranges such as ``"100_200"`` are rejected even though Lexicon's
+    control handler accepts any ``"<min>_<max>"`` string: the value persists as
+    a Lexicon setting, and the dropdown has no label to show for it. ``bool``
+    members are rejected even though ``bool`` is a subclass of ``int``.
+    """
+    if isinstance(value, str):
+        candidate = value
+    elif isinstance(value, (tuple, list)) and len(value) == 2:
+        low, high = value
+        if isinstance(low, bool) or isinstance(high, bool):
+            return None
+        if not isinstance(low, int) or not isinstance(high, int):
+            return None
+        candidate = f"{low}_{high}"
+    else:
+        return None
+
+    if candidate in TEMPO_RANGES:
+        return cast(TempoRange, candidate)
+    return None
 
 
 class TrackUpdate(TypedDict, total=False):

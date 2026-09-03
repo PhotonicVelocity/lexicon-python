@@ -12,7 +12,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from lexicon.resources.tracks import Tracks  # noqa: E402
+from lexicon.resources.tracks import ANALYZE_ACTION, Tracks  # noqa: E402
 from lexicon.resources.tracks_types import (  # noqa: E402
     FilterField,
     TrackEditField,
@@ -29,6 +29,8 @@ from lexicon.resources.tracks_types import (  # noqa: E402
     _normalize_cuepoint_type,
     _normalize_cuepoints,
     _normalize_tempomarkers,
+    _normalize_tempo_range,
+    TEMPO_RANGES,
 )
 
 
@@ -1035,6 +1037,145 @@ class TracksValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.tracks.delete([0, -1], validation="strict")
 
+    def test_analyze_invalid_track_ids_strict_raises(self):
+        with patch.object(self.tracks, "_post") as mocked_post:
+            with self.assertRaises(ValueError):
+                self.tracks.analyze("nope", validation="strict")  # type: ignore[arg-type]
+        mocked_post.assert_not_called()
+
+    def test_analyze_invalid_track_ids_warn_returns_false(self):
+        with patch.object(self.tracks, "_post") as mocked_post:
+            result = self.tracks.analyze("nope", validation="warn")  # type: ignore[arg-type]
+        self.assertFalse(result)
+        mocked_post.assert_not_called()
+
+    def test_analyze_all_invalid_ids_warn(self):
+        with patch.object(self.tracks, "_post") as mocked_post:
+            result = self.tracks.analyze([0, -1], validation="warn")
+        self.assertFalse(result)
+        mocked_post.assert_not_called()
+
+    def test_analyze_all_invalid_ids_strict(self):
+        with self.assertRaises(ValueError):
+            self.tracks.analyze([0, -1], validation="strict")
+
+    def test_analyze_sends_action_and_ids(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze([1, 2])
+        self.assertTrue(result)
+        args, kwargs = mocked_post.call_args
+        self.assertEqual(args[0], "/control")
+        self.assertEqual(kwargs["json"]["action"], "AudioAnalyzer_Analyze")
+        self.assertEqual(kwargs["json"]["action"], ANALYZE_ACTION)
+        self.assertEqual(kwargs["json"]["parameters"]["trackIds"], [1, 2])
+
+    def test_analyze_single_int_id(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze(1)
+        self.assertTrue(result)
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["trackIds"], [1])
+
+    def test_analyze_response_none_returns_false(self):
+        with patch.object(self.tracks, "_post", return_value=None):
+            result = self.tracks.analyze([1])
+        self.assertFalse(result)
+
+    def test_analyze_omits_unset_options(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            self.tracks.analyze([1])
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(list(parameters.keys()), ["trackIds"])
+
+    def test_analyze_sends_given_options(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            self.tracks.analyze(
+                [1],
+                analyze_key=True,
+                analyze_beatgrid=False,
+                analyze_waveform=True,
+                analyze_energy=False,
+                do_not_overwrite=True,
+            )
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["analyzeKey"], True)
+        self.assertEqual(parameters["analyzeBeatgrid"], False)
+        self.assertEqual(parameters["analyzeWaveform"], True)
+        self.assertEqual(parameters["analyzeEnergy"], False)
+        self.assertEqual(parameters["doNotOverwrite"], True)
+
+    def test_analyze_invalid_bool_strict_raises(self):
+        with patch.object(self.tracks, "_post") as mocked_post:
+            with self.assertRaises(ValueError):
+                self.tracks.analyze([1], analyze_key=1, validation="strict")  # type: ignore[arg-type]
+        mocked_post.assert_not_called()
+
+    def test_analyze_invalid_bool_warn_omits_key(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze(
+                [1],
+                analyze_key="yes",  # type: ignore[arg-type]
+                analyze_energy=True,
+                validation="warn",
+            )
+        self.assertTrue(result)
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertNotIn("analyzeKey", parameters)
+        self.assertEqual(parameters["analyzeEnergy"], True)
+
+    def test_analyze_tempo_range_tuple(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            self.tracks.analyze([1], tempo_range=(98, 195))
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["tempoRange"], "98_195")
+
+    def test_analyze_tempo_range_string(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            self.tracks.analyze([1], tempo_range="98_195")
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["tempoRange"], "98_195")
+
+    def test_analyze_tempo_range_non_preset_strict_raises(self):
+        with patch.object(self.tracks, "_post") as mocked_post:
+            with self.assertRaises(ValueError):
+                self.tracks.analyze([1], tempo_range="100_200", validation="strict")  # type: ignore[arg-type]
+        mocked_post.assert_not_called()
+
+    def test_analyze_tempo_range_non_preset_warn_omits_key(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze([1], tempo_range="100_200", validation="warn")  # type: ignore[arg-type]
+        self.assertTrue(result)
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertNotIn("tempoRange", parameters)
+        self.assertEqual(parameters["trackIds"], [1])
+
+    def test_analyze_tempo_range_non_preset_off_passes_through(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze([1], tempo_range="100_200", validation="off")  # type: ignore[arg-type]
+        self.assertTrue(result)
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["tempoRange"], "100_200")
+
+    def test_analyze_validation_off_passes_raw_values(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            result = self.tracks.analyze(
+                "nope",  # type: ignore[arg-type]
+                analyze_key=1,  # type: ignore[arg-type]
+                tempo_range=(195, 98),
+                validation="off",
+            )
+        self.assertTrue(result)
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(parameters["trackIds"], "nope")
+        self.assertEqual(parameters["analyzeKey"], 1)
+        self.assertEqual(parameters["tempoRange"], (195, 98))
+
+    def test_analyze_validation_off_omits_none_options(self):
+        with patch.object(self.tracks, "_post", return_value={}) as mocked_post:
+            self.tracks.analyze([1], validation="off")
+        parameters = mocked_post.call_args.kwargs["json"]["parameters"]
+        self.assertEqual(list(parameters.keys()), ["trackIds"])
+
     def test_paged_tracks_limit_zero(self):
         with patch.object(self.tracks, "_request") as mocked_request:
             result = self.tracks._paged_tracks_json(
@@ -1545,3 +1686,38 @@ class TracksTypesValidationTests(unittest.TestCase):
         payload, errors = _normalize_tempomarkers([{"startTime": 0.5, "bpm": "bad"}])
         self.assertEqual(payload, [])
         self.assertTrue(errors.dropped)
+
+    def test_normalize_tempo_range_presets(self):
+        self.assertEqual(len(TEMPO_RANGES), 8)
+        for preset in TEMPO_RANGES:
+            self.assertEqual(_normalize_tempo_range(preset), preset)
+
+    def test_normalize_tempo_range_tuple_maps_to_preset(self):
+        self.assertEqual(_normalize_tempo_range((98, 195)), "98_195")
+        self.assertEqual(_normalize_tempo_range((0, 300)), "0_300")
+        self.assertEqual(_normalize_tempo_range((180, 300)), "180_300")
+
+    def test_normalize_tempo_range_list_maps_to_preset(self):
+        self.assertEqual(_normalize_tempo_range([98, 195]), "98_195")
+
+    def test_normalize_tempo_range_non_preset(self):
+        self.assertIsNone(_normalize_tempo_range("100_200"))
+        self.assertIsNone(_normalize_tempo_range((100, 200)))
+        self.assertIsNone(_normalize_tempo_range((195, 98)))
+
+    def test_normalize_tempo_range_bad_string(self):
+        self.assertIsNone(_normalize_tempo_range("98 - 195"))
+        self.assertIsNone(_normalize_tempo_range("98_195 "))
+        self.assertIsNone(_normalize_tempo_range(""))
+
+    def test_normalize_tempo_range_non_int_members(self):
+        self.assertIsNone(_normalize_tempo_range((98.5, 195)))
+        self.assertIsNone(_normalize_tempo_range((98, "195")))
+        self.assertIsNone(_normalize_tempo_range((True, 195)))
+        self.assertIsNone(_normalize_tempo_range((98, True)))
+
+    def test_normalize_tempo_range_wrong_shape(self):
+        self.assertIsNone(_normalize_tempo_range((98, 195, 300)))
+        self.assertIsNone(_normalize_tempo_range((98,)))
+        self.assertIsNone(_normalize_tempo_range(98))
+        self.assertIsNone(_normalize_tempo_range(None))

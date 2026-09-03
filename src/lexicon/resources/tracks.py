@@ -10,6 +10,7 @@ from .tracks_types import (
     FilterField,
     SortInput,
     TempoMarkerUpdate,
+    TempoRange,
     TrackEditField,
     TrackField,
     TrackSource,
@@ -19,10 +20,15 @@ from .tracks_types import (
     _normalize_fields,
     _normalize_filters,
     _normalize_sorts,
+    _normalize_tempo_range,
     _cuepoint_type_name,
 )
 from ..tools.tempo import beats_to_seconds, seconds_to_beats
 from ._common_types import ValidationMode, _normalize_id_sequence
+
+# The OpenAPI spec documents this control action as "TrackBrowser_AnalyzeStart". Lexicon 1.11.13
+# rejects that name with HTTP 400 and accepts only the internal id the app maps it to.
+ANALYZE_ACTION = "AudioAnalyzer_Analyze"
 
 
 class Tracks(Resource):
@@ -786,6 +792,134 @@ class Tracks(Resource):
             payload = {"ids": ids}
 
         response = self._delete("/tracks", json=payload, timeout=timeout)
+        return response is not None
+
+    def analyze(
+        self,
+        track_ids: Sequence[int] | int,
+        *,
+        analyze_key: Optional[bool] = None,
+        analyze_beatgrid: Optional[bool] = None,
+        analyze_waveform: Optional[bool] = None,
+        analyze_energy: Optional[bool] = None,
+        do_not_overwrite: Optional[bool] = None,
+        tempo_range: Optional[TempoRange | tuple[int, int]] = None,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> bool:
+        """Start Lexicon's audio analyzer on one or more tracks.
+
+        Parameters
+        ----------
+        track_ids
+            Track ID or sequence of track IDs to analyze.
+        analyze_key
+            Analyze musical key. ``None`` uses Lexicon's own analysis setting.
+        analyze_beatgrid
+            Analyze tempo and beatgrid. ``None`` uses Lexicon's own analysis setting.
+        analyze_waveform
+            Analyze the waveform. ``None`` uses Lexicon's own analysis setting.
+        analyze_energy
+            Analyze energy. ``None`` uses Lexicon's own analysis setting.
+        do_not_overwrite
+            Keep existing analysis values instead of replacing them. ``None``
+            uses Lexicon's own analysis setting.
+        tempo_range
+            Tempo range for beatgrid detection. One of Lexicon's dropdown
+            presets ``"0_300"`` (Any), ``"58_115"``, ``"68_135"``,
+            ``"78_155"``, ``"88_175"``, ``"98_195"``, ``"128_255"``,
+            ``"180_300"`` (180+), or the matching ``(min, max)`` tuple of
+            integers.
+        validation
+            Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
+            inputs with warnings, and ``"strict"`` raises on invalid inputs.
+            In ``"off"`` mode, inputs must match the API-native shapes.
+        timeout
+            Timeout in seconds for this request.
+
+        Returns
+        -------
+        bool
+            True if Lexicon accepted the request, otherwise False.
+
+        Notes
+        -----
+        Analysis runs in the background. The call returns as soon as Lexicon
+        accepts the request, not when analysis finishes. The response carries no
+        job id and the API has no completion signal, so poll ``tracks.get()``
+        and watch ``tempomarkers``, ``bpm``, ``key``, or ``dateModified`` to see
+        when a track has been processed.
+
+        ``tempo_range`` is written to Lexicon's stored analysis tempo-range
+        setting and stays changed after the call. The five boolean options apply
+        to this run only.
+
+        ``tempo_range`` must be one of the dropdown presets in ``"warn"`` and
+        ``"strict"`` modes; ``"off"`` passes any string through. Lexicon's
+        control handler accepts any ``"<min>_<max>"`` string and the analyzer
+        clamps the stored bounds to 50..300 when it runs, but the dropdown shows
+        no label for a value that is not a preset.
+
+        The request uses the internal action id ``ANALYZE_ACTION``
+        (``"AudioAnalyzer_Analyze"``) because Lexicon 1.11.13 rejects the action
+        name the OpenAPI spec documents.
+        """
+        parameters: dict[str, object]
+        if validation == "off":
+            # Pass through directly to API without any shape validation
+            parameters = {"trackIds": track_ids}
+        else:
+            # Normalize and validate
+            ids = _normalize_id_sequence(track_ids)
+            if ids is None:
+                if validation == "strict":
+                    raise ValueError(f"Invalid track_ids for analyze: {track_ids}")
+                if validation == "warn":  # pragma: no branch - strict raises above
+                    self._logger.warning("Invalid track_ids for analyze: %s", track_ids)
+                    return False
+
+            parameters = {"trackIds": ids}
+
+        # A key left out of the payload makes Lexicon use its own setting for that option.
+        options: tuple[tuple[str, Optional[bool]], ...] = (
+            ("analyzeKey", analyze_key),
+            ("analyzeBeatgrid", analyze_beatgrid),
+            ("analyzeWaveform", analyze_waveform),
+            ("analyzeEnergy", analyze_energy),
+            ("doNotOverwrite", do_not_overwrite),
+        )
+        for name, value in options:
+            if value is None:
+                continue
+            # bool is a subclass of int, so isinstance is the only check that rejects 1 and 0.
+            if validation != "off" and not isinstance(value, bool):
+                if validation == "strict":
+                    raise ValueError(f"Invalid {name} for analyze: {value}")
+                self._logger.warning("Skipping invalid %s for analyze: %s", name, value)
+                continue
+            parameters[name] = value
+
+        if tempo_range is not None:
+            if validation == "off":
+                parameters["tempoRange"] = tempo_range
+            else:
+                normalized_range = _normalize_tempo_range(tempo_range)
+                if normalized_range is None:
+                    if validation == "strict":
+                        raise ValueError(
+                            f"Invalid tempo_range for analyze: {tempo_range}"
+                        )
+                    self._logger.warning(
+                        "Skipping invalid tempo_range for analyze: %s", tempo_range
+                    )
+                else:
+                    parameters["tempoRange"] = normalized_range
+
+        response = self._post(
+            "/control",
+            json={"action": ANALYZE_ACTION, "parameters": parameters},
+            timeout=timeout,
+        )
         return response is not None
 
     def _paged_tracks_json(

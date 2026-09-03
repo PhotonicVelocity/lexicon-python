@@ -8,16 +8,13 @@ This document outlines potential enhancements organized by priority and scope.
 
 ### 1. Post-API Filtering for Client-Side Search
 
-**Problem**: Some simple track fields are ignored as server-side search filters
-(e.g., `archived`, `incoming`, `sizeBytes`). Date Fields can't use comparison
-filters. The fields that are arrays (`cuepoints`, `tempomarkers`) are also not
-accepted. `tags` is accepted with a custom comma separated string of tag names
-with `!` and `~` operators (e.g. `"~Rock, !Chill"` - Has tag `Rock` AND doesn't
-have tag `Chill`).
+**Problem**: Some simple track fields are ignored as server-side search filters (e.g., `archived`, `incoming`,
+`sizeBytes`). Date Fields can't use comparison filters. The fields that are arrays (`cuepoints`, `tempomarkers`) are
+also not accepted. `tags` is accepted with a custom comma separated string of tag names with `!` and `~` operators (e.g.
+`"~Rock, !Chill"` - Has tag `Rock` AND doesn't have tag `Chill`).
 
-**Solution**: Post fetch filtering. For simple fields this is relatively easy.
-For cuepoints and tempomarkers some schema will have to be determined, or could
-be handled by lamdas?
+**Solution**: Post fetch filtering. For simple fields this is relatively easy. For cuepoints and tempomarkers some
+schema will have to be determined, or could be handled by lamdas?
 
 - Cuepoints ideas:
   - Filter on number of cuepoints
@@ -43,19 +40,17 @@ filtered = lex.tracks.filter_results(tracks, {"incoming": True, "cuepoints": lam
 
 ```
 
-**Implementation Location**: `src/lexicon/resources/tracks.py` (search method)
-or `src/lexicon/tools/tracks.py` (new helpers file)
+**Implementation Location**: `src/lexicon/resources/tracks.py` (search method) or `src/lexicon/tools/tracks.py` (new
+helpers file)
 
 ---
 
 ### 2. Full Tracks List Download + Local Filtering (>1000 limit)
 
-**Problem**: API caps search results at 1000; users need to filter larger
-libraries locally.
+**Problem**: API caps search results at 1000; users need to filter larger libraries locally.
 
-**Solution**: Offer option to download full tracks list and filter client-side.
-This is a natural extension of the post-API filtering in #1: if the API caps
-results or ignores a filter field, the same local filtering logic applies.
+**Solution**: Offer option to download full tracks list and filter client-side. This is a natural extension of the
+post-API filtering in #1: if the API caps results or ignores a filter field, the same local filtering logic applies.
 
 **Implementation Strategy**:
 
@@ -129,11 +124,9 @@ def _apply_filter_locally(self, tracks: list, filter_dict: dict) -> list:
 
 ### 3. API Version Detection & Compatibility
 
-**Problem**: SDK might break if Lexicon API schema changes; users don't know
-which version they're using.
+**Problem**: SDK might break if Lexicon API schema changes; users don't know which version they're using.
 
-**Solution**: Detect and cache API version on client init. Warn if SDK might
-need updating.
+**Solution**: Detect and cache API version on client init. Warn if SDK might need updating.
 
 **Implementation Options**:
 
@@ -186,9 +179,8 @@ def request(...):
 
 ### 4. Update-Payload Constructor Helpers
 
-**Problem**: Update operations take `TypedDict` payloads (`TempoMarkerUpdate`,
-`CuePointUpdate`, etc.). Today callers either build dict literals plus a type
-annotation:
+**Problem**: Update operations take `TypedDict` payloads (`TempoMarkerUpdate`, `CuePointUpdate`, etc.). Today callers
+either build dict literals plus a type annotation:
 
 ```python
 from lexicon import TempoMarkerUpdate
@@ -197,9 +189,8 @@ markers: list[TempoMarkerUpdate] = [
 ]
 ```
 
-…or skip the annotation and lose type-checker coverage. Repetitive `float(...)`
-casts and dict literals at every construction site are friction; for `TypedDict`s
-with many optional fields, dict literals are also hard to discover via
+…or skip the annotation and lose type-checker coverage. Repetitive `float(...)` casts and dict literals at every
+construction site are friction; for `TypedDict`s with many optional fields, dict literals are also hard to discover via
 autocomplete.
 
 **Solution**: Constructor helpers, namespaced under `lexicon.types` (or similar):
@@ -214,39 +205,32 @@ cues = [
 ]
 ```
 
-The helpers handle casting (`float(s)`), apply defaults, and return the matching
-`TypedDict`. Callers drop the explicit annotation; type inference flows from the
-helper's return type.
+The helpers handle casting (`float(s)`), apply defaults, and return the matching `TypedDict`. Callers drop the explicit
+annotation; type inference flows from the helper's return type.
 
 **Tradeoffs**:
 
-- Wins compound at sites that construct many payloads or have many optional
-  fields; sites that construct a single short literal barely benefit.
-- Two ways to do it (raw dict vs helper) — needs clear guidance on which
-  pattern is canonical.
-- Each helper has to track its `TypedDict` if fields change. Consider
-  property-based / round-trip tests pinning helper output to the type shape.
+- Wins compound at sites that construct many payloads or have many optional fields; sites that construct a single short
+  literal barely benefit.
+- Two ways to do it (raw dict vs helper) — needs clear guidance on which pattern is canonical.
+- Each helper has to track its `TypedDict` if fields change. Consider property-based / round-trip tests pinning helper
+  output to the type shape.
 
-**When it earns its keep**: a `TypedDict` with 8+ optional fields, or one with
-runtime validation needs (range checks, mutual-exclusion). For flat 2-field
-shapes like `TempoMarkerUpdate`, the type-alias-plus-literal pattern is fine
-on its own.
+**When it earns its keep**: a `TypedDict` with 8+ optional fields, or one with runtime validation needs (range checks,
+mutual-exclusion). For flat 2-field shapes like `TempoMarkerUpdate`, the type-alias-plus-literal pattern is fine on its
+own.
 
-**Implementation Location**: new `src/lexicon/types.py` (or `src/lexicon/builders.py`)
-re-exported from the top-level package alongside the existing
-`TempoMarkerUpdate` / `CuePointUpdate` types.
+**Implementation Location**: new `src/lexicon/types.py` (or `src/lexicon/builders.py`) re-exported from the top-level
+package alongside the existing `TempoMarkerUpdate` / `CuePointUpdate` types.
 
 ---
 
 ### 9. Probe + Document Non-GET Endpoint Return Shapes
 
-**Problem**: lex-py methods that mutate state (PATCH/POST/DELETE) often
-re-fetch the full object after the mutation to return a complete shape to
-callers. The trailing GET is conservative — written before the actual
-return shape of each mutation endpoint was fully understood. In some
-cases the mutation endpoint already returns enough data to skip the
-re-fetch entirely; in others it returns a minimal `{id, edits}` shape
-that genuinely needs the follow-up GET.
+**Problem**: lex-py methods that mutate state (PATCH/POST/DELETE) often re-fetch the full object after the mutation to
+return a complete shape to callers. The trailing GET is conservative — written before the actual return shape of each
+mutation endpoint was fully understood. In some cases the mutation endpoint already returns enough data to skip the
+re-fetch entirely; in others it returns a minimal `{id, edits}` shape that genuinely needs the follow-up GET.
 
 The canonical example is `tracks.update_tempogrid(...)`:
 
@@ -254,56 +238,41 @@ The canonical example is `tracks.update_tempogrid(...)`:
 2. `PATCH /v1/track` — apply the update.
 3. `GET /v1/track?id=...` — fetch the updated track to return.
 
-For callers that only need `dateModified` and `tempomarkers` (e.g. a
-sync trigger), step 3 is unnecessary if the PATCH response already
-carries those fields. Today we don't *know* whether it does, because
-the response shape isn't documented or probed.
+For callers that only need `dateModified` and `tempomarkers` (e.g. a sync trigger), step 3 is unnecessary if the PATCH
+response already carries those fields. Today we don't _know_ whether it does, because the response shape isn't
+documented or probed.
 
-Other affected methods include `tracks.update()`, `tracks.add()`,
-`playlists.{create, update, delete}`, `cue_points.{add, remove}`, and the
-tag/category mutation methods. Note 8 ("Validate Update Responses Before
-Re-Fetch") flags that the PATCH response shape *already varies* (tag
-edits return `{}`; other edits return `{id, edits}`); that variability
-makes the systematic probe more valuable, not less.
+Other affected methods include `tracks.update()`, `tracks.add()`, `playlists.{create, update, delete}`,
+`cue_points.{add, remove}`, and the tag/category mutation methods. Note 8 ("Validate Update Responses Before Re-Fetch")
+flags that the PATCH response shape _already varies_ (tag edits return `{}`; other edits return `{id, edits}`); that
+variability makes the systematic probe more valuable, not less.
 
 **Solution**: A two-phase pass.
 
-1. **Probe.** Hit each non-GET endpoint against a live Lexicon and
-   capture the response body. Document the shape per endpoint
-   (`docs/non-get-return-shapes.md` or as a section in
-   `docs/api-issues.md`). Useful even on its own — we don't currently
-   have this written down.
-2. **Method audit.** For each lex-py method that does an extra GET
-   after a mutation, decide:
-   - **Drop the GET** — if the mutation response is rich enough on its
-     own, return it directly. Breaking change to method return shape;
-     callers who relied on the post-fetch full record need notice.
-   - **Opt-in flag** — `return_full=True` (default) preserves today's
-     behavior; `return_full=False` returns the mutation response
-     directly. Backwards compatible, opt-in optimization.
-   - **`_fast` variant** — separate method (`update_tempogrid_fast()`)
-     for callers that don't need the full record. Bigger surface, but
-     keeps the canonical method's contract stable.
+1. **Probe.** Hit each non-GET endpoint against a live Lexicon and capture the response body. Document the shape per
+   endpoint (`docs/non-get-return-shapes.md` or as a section in `docs/api-issues.md`). Useful even on its own — we don't
+   currently have this written down.
+2. **Method audit.** For each lex-py method that does an extra GET after a mutation, decide:
+   - **Drop the GET** — if the mutation response is rich enough on its own, return it directly. Breaking change to
+     method return shape; callers who relied on the post-fetch full record need notice.
+   - **Opt-in flag** — `return_full=True` (default) preserves today's behavior; `return_full=False` returns the mutation
+     response directly. Backwards compatible, opt-in optimization.
+   - **`_fast` variant** — separate method (`update_tempogrid_fast()`) for callers that don't need the full record.
+     Bigger surface, but keeps the canonical method's contract stable.
 
-The first option is cleanest if the shape is uniformly rich; the second
-is cleanest if some callers need the full record post-mutation; the
-third is appropriate if the canonical method's contract is widely
-relied on.
+The first option is cleanest if the shape is uniformly rich; the second is cleanest if some callers need the full record
+post-mutation; the third is appropriate if the canonical method's contract is widely relied on.
 
-**When it earns its keep**: hot paths in client code that mutate often
-and don't need the full re-fetch (e.g. music-tools' steady-state
-reverse-sync trigger pays a 33% HTTP overhead today on every push for a
-trailing GET it never uses).
+**When it earns its keep**: hot paths in client code that mutate often and don't need the full re-fetch (e.g.
+music-tools' steady-state reverse-sync trigger pays a 33% HTTP overhead today on every push for a trailing GET it never
+uses).
 
-**Coordination with note 8**: probe + method audit naturally feed into
-the validation work. Once we have the shape per endpoint documented,
-"validate edits before re-fetch" becomes "validate edits and *also*
-decide whether re-fetch is needed at all."
+**Coordination with note 8**: probe + method audit naturally feed into the validation work. Once we have the shape per
+endpoint documented, "validate edits before re-fetch" becomes "validate edits and _also_ decide whether re-fetch is
+needed at all."
 
-**Implementation Location**: `docs/api-issues.md` (or new
-`docs/non-get-return-shapes.md`) for the probe artifacts;
-`src/lexicon/resources/tracks.py`, `playlists.py`, `cue_points.py` for
-the method-level changes.
+**Implementation Location**: `docs/api-issues.md` (or new `docs/non-get-return-shapes.md`) for the probe artifacts;
+`src/lexicon/resources/tracks.py`, `playlists.py`, `cue_points.py` for the method-level changes.
 
 ---
 
@@ -349,8 +318,7 @@ playlist = lex.playlists.add(
 
 ### 6. Response Caching Layer
 
-**Problem**: Frequent API calls for same data; Lexicon is local but still adds
-latency.
+**Problem**: Frequent API calls for same data; Lexicon is local but still adds latency.
 
 **Solution**: Optional built-in caching with TTL and invalidation.
 
@@ -375,15 +343,13 @@ lex.cache.set_ttl("playlist", 60)
 
 **Implementation**: LRU cache with TTL per resource type
 
-**Implementation Location**: `src/lexicon/cache.py` (new file) +
-`src/lexicon/client.py` (integration)
+**Implementation Location**: `src/lexicon/cache.py` (new file) + `src/lexicon/client.py` (integration)
 
 ---
 
 ### 7. Dataclass/Pydantic Models Layer (Optional)
 
-**Problem**: Raw dicts are flexible but lack IDE support and validation; some
-users want type safety.
+**Problem**: Raw dicts are flexible but lack IDE support and validation; some users want type safety.
 
 **Solution**: Offer optional Pydantic models as convenience layer.
 
@@ -425,26 +391,24 @@ track = Track.from_api(lex.tracks.get(123))
 | Smartlist builder (#5)                      | High   | High   | Medium   |
 | Response caching (#6)                       | High   | Medium | Low      |
 | Dataclass/Pydantic models (#7)              | High   | Medium | Low      |
+| Control, playing, queue resources (#13)     | Medium | Medium | Medium   |
 
 ---
 
 ### 8. Validate Update Responses Before Re-Fetch
 
-**Problem**: `tracks.update()` and `playlists.update()` currently re-fetch the
-full object after a PATCH, but don't verify that the API actually accepted the
-edits.
+**Problem**: `tracks.update()` and `playlists.update()` currently re-fetch the full object after a PATCH, but don't
+verify that the API actually accepted the edits.
 
 **Solution**: Compare the `edits` echoed back in the PATCH response (e.g.
-`{"id": 1, "edits": {"title": "My New Title"}}`) against what was sent. Warn or
-raise if they don't match before re-fetching.
+`{"id": 1, "edits": {"title": "My New Title"}}`) against what was sent. Warn or raise if they don't match before
+re-fetching.
 
-**Note**: The PATCH response shape varies by edit type — tag edits return `{}`
-(empty dict) with no ID or edits echo. Other edit types may also return empty
-responses. The validation logic needs to account for this, and should not treat
+**Note**: The PATCH response shape varies by edit type — tag edits return `{}` (empty dict) with no ID or edits echo.
+Other edit types may also return empty responses. The validation logic needs to account for this, and should not treat
 an empty response as a failure.
 
-**Implementation Location**: `src/lexicon/resources/tracks.py`,
-`src/lexicon/resources/playlists.py`
+**Implementation Location**: `src/lexicon/resources/tracks.py`, `src/lexicon/resources/playlists.py`
 
 ---
 
@@ -452,31 +416,27 @@ an empty response as a failure.
 
 **Problem**: Position behavior is inconsistent between tags and playlists:
 
-- **Tags**: rejects occupied positions with an error — requires vacating the
-  target position first, then moving, then restoring. Clunky for simple reorders.
-- **Playlists**: allows occupied positions but just creates overlaps (no
-  insert/bump behavior). Ties broken by ID order. No way to do a proper insert.
+- **Tags**: rejects occupied positions with an error — requires vacating the target position first, then moving, then
+  restoring. Clunky for simple reorders.
+- **Playlists**: allows occupied positions but just creates overlaps (no insert/bump behavior). Ties broken by ID order.
+  No way to do a proper insert.
 - **Tag categories**: don't support position updates at all.
 
-**Solution**: Add helper methods that provide a consistent insert-at-position
-experience. For tags, handle the vacate-move-restore dance. For playlists,
-re-number sibling positions after insert to avoid overlaps.
+**Solution**: Add helper methods that provide a consistent insert-at-position experience. For tags, handle the
+vacate-move-restore dance. For playlists, re-number sibling positions after insert to avoid overlaps.
 
-**Implementation Location**: `src/lexicon/resources/tags.py`,
-`src/lexicon/resources/playlists.py`
+**Implementation Location**: `src/lexicon/resources/tags.py`, `src/lexicon/resources/playlists.py`
 
 ---
 
 ### 12. Tag Category Bulk Tag Assignment
 
-**Problem**: The `tags` parameter on `PATCH /tag-category` is non-functional (see
-api-issues.md). There is no way to assign multiple tags to a category in one
-call.
+**Problem**: The `tags` parameter on `PATCH /tag-category` is non-functional (see api-issues.md). There is no way to
+assign multiple tags to a category in one call.
 
-**Solution**: Add a helper like
-`tags.categories.set_tags(category_id, [tag_ids])` that sets the category's tag
-membership by updating each tag's `categoryId` individually via `PATCH /tag`.
-Could also support `add_tags` / `remove_tags` variants for partial updates.
+**Solution**: Add a helper like `tags.categories.set_tags(category_id, [tag_ids])` that sets the category's tag
+membership by updating each tag's `categoryId` individually via `PATCH /tag`. Could also support `add_tags` /
+`remove_tags` variants for partial updates.
 
 **Implementation Location**: `src/lexicon/resources/tag_categories.py`
 
@@ -484,9 +444,8 @@ Could also support `add_tags` / `remove_tags` variants for partial updates.
 
 ### 10. `[interactive]` Package Extra + `choose_playlist` Docstring
 
-**Problem**: `lexicon.tools.playlists.choose_playlist()` imports InquirerPy
-lazily inside the function and raises a `RuntimeError` at call time if it's
-missing:
+**Problem**: `lexicon.tools.playlists.choose_playlist()` imports InquirerPy lazily inside the function and raises a
+`RuntimeError` at call time if it's missing:
 
 ```python
 try:
@@ -495,32 +454,44 @@ except ImportError as exc:
     raise RuntimeError("InquirerPy is required for choose_playlist.") from exc
 ```
 
-InquirerPy is not a runtime dependency of `lexicon-python` itself, which is
-correct (it's a heavy TTY dep most users don't need). But:
+InquirerPy is not a runtime dependency of `lexicon-python` itself, which is correct (it's a heavy TTY dep most users
+don't need). But:
 
-1. The `choose_playlist` docstring doesn't call out the InquirerPy requirement,
-   so callers only discover it when they run the interactive picker for the
-   first time.
-2. There's no `pip install lexicon-python[interactive]` extra — users have to
-   `pip install InquirerPy` separately and know to do so.
+1. The `choose_playlist` docstring doesn't call out the InquirerPy requirement, so callers only discover it when they
+   run the interactive picker for the first time.
+2. There's no `pip install lexicon-python[interactive]` extra — users have to `pip install InquirerPy` separately and
+   know to do so.
 
 **Solution**: Two small fixes, both surface-level:
 
-1. **Add an `interactive` extra to `pyproject.toml`** under
-   `[project.optional-dependencies]`, pinning InquirerPy at the version the
-   picker code was written against. Callers who want the picker do
-   `pip install lexicon-python[interactive]` (or `uv add
-   lexicon-python --extra interactive`) — one command, no version-guessing.
-2. **Update the `choose_playlist` docstring** to mention the requirement and
-   point at the extra. IDE tooltips + `help()` then surface it upfront rather
-   than at first `RuntimeError`.
+1. **Add an `interactive` extra to `pyproject.toml`** under `[project.optional-dependencies]`, pinning InquirerPy at the
+   version the picker code was written against. Callers who want the picker do `pip install lexicon-python[interactive]`
+   (or `uv add lexicon-python --extra interactive`) — one command, no version-guessing.
+2. **Update the `choose_playlist` docstring** to mention the requirement and point at the extra. IDE tooltips + `help()`
+   then surface it upfront rather than at first `RuntimeError`.
 
-**When it earns its keep**: any downstream consumer that ships the interactive
-picker as a documented feature (e.g. music-tools' `add_lexicon` CLI picker).
-Also a small polish win for `help(lex.tools.playlists.choose_playlist)`.
+**When it earns its keep**: any downstream consumer that ships the interactive picker as a documented feature (e.g.
+music-tools' `add_lexicon` CLI picker). Also a small polish win for `help(lex.tools.playlists.choose_playlist)`.
 
-**Implementation Location**: `pyproject.toml` (`[project.optional-dependencies]`),
-`src/lexicon/tools/playlists.py` (docstring of `choose_playlist`).
+**Implementation Location**: `pyproject.toml` (`[project.optional-dependencies]`), `src/lexicon/tools/playlists.py`
+(docstring of `choose_playlist`).
+
+---
+
+### 13. Control, Playing, and Queue Resources
+
+**Problem**: The spec has carried `POST /control`, `GET /playing`, and `GET /queue` since at least Lexicon 1.10 (April
+2026), and the SDK wraps none of them. `GET /playing` is used only as the connection probe in
+`Lexicon._verify_connection()`. `tracks.analyze()` (added 2026-09-02) sends one hard-coded control action and is the
+only caller of `/control`.
+
+**Solution**: A `lex.control(action, **parameters)` method with a `Literal` of the spec's action names, plus
+`lex.player.playing()` returning `{"track", "progress", "currentTime"}` (the live shape; the spec says `seconds`, see
+api-issues.md) and `lex.player.queue()` returning the track list. The plugin run actions (`PluginRunActionByName`, see
+api-issues.md) stay out of scope until plugins are wanted.
+
+**Implementation Location**: `src/lexicon/client.py` (`control`), `src/lexicon/resources/player.py` (new),
+`docs/resource-map.md` verb sets.
 
 ---
 

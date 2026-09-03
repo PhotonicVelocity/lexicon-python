@@ -8,8 +8,10 @@ from .resources.tags_types import TagResponse
 from .resources.tracks_types import (
     CuePointResponse,
     CuePointUpdate,
+    TEMPO_RANGES,
     TempoMarkerResponse,
     TempoMarkerUpdate,
+    TempoRange,
     TrackResponse,
 )
 
@@ -28,4 +30,6 @@ __all__ = [
     "CuePointUpdate",
     "TempoMarkerResponse",
     "TempoMarkerUpdate",
+    "TempoRange",
+    "TEMPO_RANGES",
 ]

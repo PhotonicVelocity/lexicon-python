@@ -32,6 +32,7 @@ pip install lexicon-python
 from lexicon import Lexicon
 
 lex = Lexicon()  # verifies the API is reachable; raises LexiconConnectionError otherwise
+playlist = lex.playlists.choose()
 
 # list tracks (default fields: id, artist, title, bpm, key, ...)
 tracks = lex.tracks.list(limit=10) or []
@@ -149,6 +150,9 @@ lex.tracks.delete([123, 456])
 
 # Replace tempomarkers while keeping cuepoints anchored to the same beats
 lex.tracks.update_tempogrid(123, [{"startTime": 0.0, "bpm": 124.0}])
+
+# Start Lexicon's analyzer on specific tracks
+lex.tracks.analyze([123, 456], analyze_beatgrid=True, do_not_overwrite=False)
 ```
 
 Notes:
@@ -167,6 +171,12 @@ Notes:
 - `tracks.update_tempogrid()` replaces tempomarkers while preserving each cuepoint's beat position by rewriting
   `startTime`/`endTime` against the new grid. Use `tracks.update(track_id, {"tempomarkers": [...]})` directly if you
   want the raw field replacement (cuepoints' seconds stay put, beats shift).
+- `tracks.analyze()` returns as soon as Lexicon accepts the request. Analysis runs in the background and the API has no
+  completion signal, so poll `tracks.get()` and watch `tempomarkers`, `bpm`, `key`, or `dateModified`.
+- `tracks.analyze(tempo_range=...)` takes one of the eight ids Lexicon's analyze dropdown stores: `"0_300"` (Any),
+  `"58_115"`, `"68_135"`, `"78_155"`, `"88_175"`, `"98_195"`, `"128_255"`, `"180_300"` (180+). An equivalent
+  `(min, max)` tuple works too. The value is written to Lexicon's stored analysis setting and persists after the call;
+  the boolean options apply to that run only.
 
 ### Track Payload Shapes
 
