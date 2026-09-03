@@ -196,41 +196,68 @@ def test_search_tracks(lexicon):
     assert results[0].get("title") == "IntTest Title"
 
 
-def test_analyze_track(lexicon, create_click_file):
-    """Analyzing a click track should produce tempomarkers and a bpm."""
-    audio = create_click_file("test_analyze_track.wav", bpm=120)
+SENTINEL_BPM = 77.0
+
+
+def _wait_for_track(lexicon, track_id, ready, timeout_s, what):
+    """Poll tracks.get() until ready(track) holds; fail with the last payload."""
+    deadline = time.time() + timeout_s
+    track = None
+    while time.time() < deadline:
+        track = lexicon.tracks.get(track_id)
+        if track and ready(track):
+            return track
+        time.sleep(ANALYZE_POLL_INTERVAL_S)
+    pytest.fail(f"{what} did not happen within {timeout_s}s; last response was {track}")
+
+
+def test_analyze_track(lexicon, create_beat_file):
+    """An explicit analyze call should replace a planted beatgrid."""
+    audio = create_beat_file("test_analyze_track.wav", bpm=128)
     added = lexicon.tracks.add([str(audio)])
     assert added
     track_id = added[0]["id"]
 
+    # A fresh library auto-analyzes new tracks. Let that pass finish first so it
+    # cannot be the thing that replaces the sentinel planted below.
+    _wait_for_track(
+        lexicon,
+        track_id,
+        lambda track: bool(track.get("tempomarkers")),
+        ANALYZE_TIMEOUT_S,
+        "automatic analysis after add",
+    )
+
+    planted = lexicon.tracks.update(
+        track_id, {"tempomarkers": [{"startTime": 0.0, "bpm": SENTINEL_BPM}]}
+    )
+    assert planted is not None
+    assert planted["tempomarkers"][0]["bpm"] == SENTINEL_BPM
+
     assert (
         lexicon.tracks.analyze(
             [track_id],
-            analyze_key=True,
             analyze_beatgrid=True,
-            analyze_waveform=True,
-            analyze_energy=True,
+            analyze_key=False,
+            analyze_waveform=False,
+            analyze_energy=False,
             do_not_overwrite=False,
         )
         is True
     )
 
-    # The API returns as soon as Lexicon accepts the request and gives no
-    # completion signal, so poll until tempomarkers appear.
-    deadline = time.time() + ANALYZE_TIMEOUT_S
-    track = None
-    while time.time() < deadline:
-        track = lexicon.tracks.get(track_id)
-        markers = track.get("tempomarkers") if track else None
-        if isinstance(markers, list) and markers:
-            break
-        time.sleep(ANALYZE_POLL_INTERVAL_S)
-    else:
-        pytest.fail(
-            f"Track {track_id} had no tempomarkers after {ANALYZE_TIMEOUT_S}s; "
-            f"last response was {track}"
-        )
-
+    # The call returns once Lexicon accepts it and there is no completion
+    # signal, so poll until the sentinel beatgrid has been replaced.
+    track = _wait_for_track(
+        lexicon,
+        track_id,
+        lambda track: (
+            bool(track.get("tempomarkers"))
+            and track["tempomarkers"][0]["bpm"] != SENTINEL_BPM
+        ),
+        ANALYZE_TIMEOUT_S,
+        "explicit analysis replacing the sentinel beatgrid",
+    )
     bpm = track["bpm"]
     assert isinstance(bpm, (int, float)), f"bpm was {bpm!r}"
     assert bpm > 0

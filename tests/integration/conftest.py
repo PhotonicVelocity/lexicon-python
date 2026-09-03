@@ -5,9 +5,17 @@ for the audio files the tests add. The app and database lifecycle these fixtures
 drive lives in lifecycle.py.
 
 Note: The Lexicon local API must be enabled in Lexicon settings for tests to connect.
+
+A watch folder configured in Lexicon is stored in Electron's Local Storage, not
+in main.db, so the emptied library still imports it on launch (observed: 6265
+tracks within 5 s of the API answering). The import only reads the files. The
+empty-library guard below passes because the API answers before the import
+lands; test_delete_track then removes every row, watch-folder rows included.
 """
 
+import array
 import math
+import random
 import struct
 import wave
 from pathlib import Path
@@ -133,56 +141,61 @@ def create_audio_file():
         path.unlink(missing_ok=True)
 
 
-def _create_click_wav(path: Path, duration_s: float = 8.0, bpm: int = 120) -> Path:
-    """Create a WAV file with one click per beat at the given tempo.
+def _create_beat_wav(path: Path, duration_s: float = 30.0, bpm: int = 128) -> Path:
+    """Create a WAV file with a synthetic drum pattern at the given tempo.
 
-    Lexicon's beatgrid analyzer needs transients; a silent file yields no
-    tempomarkers. Each click is a 5 ms full-scale 1 kHz burst with a linear
-    decay, followed by silence until the next beat.
+    Lexicon's beat tracker needs a chain of at least 8 detected beats from a
+    steady onset stream; an 8 s file of 5 ms clicks produced no beatgrid at all.
+    Every beat carries a decaying 55 Hz kick and every eighth note a short noise
+    burst, which the onset detector treats like a drum loop.
     """
     sample_rate = 48000
     channels = 1
     sample_width = 2  # 16-bit
-    click_ms = 5
-    click_hz = 1000
-    peak = 32767
-    click_frames = int(sample_rate * click_ms / 1000)
     beat_frames = int(sample_rate * 60 / bpm)
     total_frames = int(duration_s * sample_rate)
 
-    click = b"".join(
-        struct.pack(
-            "<h",
-            int(
-                peak
-                * (1.0 - frame / click_frames)
-                * math.sin(2 * math.pi * click_hz * frame / sample_rate)
-            ),
-        )
-        for frame in range(click_frames)
-    )
-    beat = click + struct.pack("<h", 0) * (beat_frames - click_frames)
+    kick_frames = int(sample_rate * 0.25)
+    kick = [
+        0.9
+        * math.exp(-frame / (sample_rate * 0.05))
+        * math.sin(2 * math.pi * 55 * frame / sample_rate)
+        for frame in range(kick_frames)
+    ]
+    noise = random.Random(0)
+    hat_frames = int(sample_rate * 0.03)
+    hat = [
+        0.3 * math.exp(-frame / (sample_rate * 0.008)) * noise.uniform(-1.0, 1.0)
+        for frame in range(hat_frames)
+    ]
 
+    samples = [0.0] * total_frames
+    for start in range(0, total_frames, beat_frames):
+        for offset, value in enumerate(kick[: total_frames - start]):
+            samples[start + offset] += value
+    for start in range(0, total_frames, beat_frames // 2):
+        for offset, value in enumerate(hat[: total_frames - start]):
+            samples[start + offset] += value
+
+    frames = array.array(
+        "h", (int(max(-1.0, min(1.0, value)) * 32767) for value in samples)
+    )
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(channels)
         wf.setsampwidth(sample_width)
         wf.setframerate(sample_rate)
-        frames_written = 0
-        while frames_written < total_frames:
-            frames = min(beat_frames, total_frames - frames_written)
-            wf.writeframes(beat[: frames * sample_width])
-            frames_written += frames
+        wf.writeframes(frames.tobytes())
     return path
 
 
 @pytest.fixture(scope="session")
-def create_click_file():
-    """Factory fixture that creates click-track WAV files and cleans them up after."""
+def create_beat_file():
+    """Factory fixture that creates drum-pattern WAV files and cleans them up after."""
     created: list[Path] = []
 
-    def _create(name: str, duration_s: float = 8.0, bpm: int = 120) -> Path:
+    def _create(name: str, duration_s: float = 30.0, bpm: int = 128) -> Path:
         path = TEST_DIR / name
-        _create_click_wav(path, duration_s, bpm)
+        _create_beat_wav(path, duration_s, bpm)
         created.append(path)
         return path
 
