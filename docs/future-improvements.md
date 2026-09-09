@@ -495,6 +495,34 @@ api-issues.md) stay out of scope until plugins are wanted.
 
 ---
 
+### 14. `update_tempogrid` Preserves Cue Beats; Offer a Plain Time Shift
+
+**Problem**: `tracks.update_tempogrid()` reads the current track, converts every cuepoint's `startTime` (and `endTime`)
+to beats under the old grid, and writes them back as seconds under the new grid. That contract is implicit: the
+docstring says the grid is replaced, and a caller finds out about the cue rewrite by reading the code. It is the right
+behavior when the audio is unchanged and the grid was re-detected. It is a different operation from the other common
+edit, a time shift: the audio file was replaced (a re-rip with different leading silence, an encoder-delay correction, a
+trimmed intro) and every marker and cue must move by the same number of seconds. For a uniform shift the beat math
+happens to give the same answer, because beats are preserved when every segment moves together, but it does so through
+float beat conversions and three HTTP calls, and a caller who shifts the cues themselves before calling it moves them
+twice. music-tools bypassed the method for the 2026-09 re-rip replacement and sent one `tracks.update()` with both lists
+shifted, which is the raw replacement the README already recommends for this case.
+
+**Solution**: two small changes.
+
+1. State the contract in the docstring and README: cue beat positions are preserved; seconds change whenever the grid
+   changes; use `tracks.update()` for raw replacement.
+2. Add `tracks.shift_grid(track_id, offset_seconds)` (or a `preserve="beats" | "seconds"` argument on
+   `update_tempogrid`) that adds a constant to every tempomarker `startTime` and every cuepoint `startTime`/`endTime`
+   and refuses, rather than clamps, a result below 0. One GET, one PATCH.
+
+While there, check the edge cases of the beat path: a cue earlier than the first marker (negative beats under the first
+segment's bpm), a cue past the last marker after the marker count changed, and rounding through beats for cues that were
+placed exactly on a marker.
+
+**Implementation Location**: `src/lexicon/resources/tracks.py` (`update_tempogrid`, new `shift_grid`),
+`src/lexicon/tools/tempo.py`, README section on tempo grids.
+
 ## Notes
 
 - All features should maintain backward compatibility
