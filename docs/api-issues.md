@@ -109,9 +109,9 @@
 ### Added 2026-11-04 (Lexicon 1.11.15)
 
 - `GET /v1/playing` after an eject returns `{"data":{"track":null,"progress":0,"currentTime":0.976}}`, where the spec
-  says the endpoint returns `null` (live-tested). `currentTime` keeps the position from before the eject, so check
-  `track` rather than `currentTime`. The handler falls back to `null` for `progress` and `currentTime` when the player
-  object does not exist; not live-tested.
+  says all three are `null` (live-tested). `currentTime` keeps the position from before the eject, so check `track`
+  rather than `currentTime`. The handler falls back to `null` for `progress` and `currentTime` when the player object
+  does not exist; not live-tested.
 - `GET /v1/playing` returns the loaded track while paused, despite the spec's "currently playing". `currentTime` held at
   19.81 across two reads (live-tested). The response has no play state field.
 - `data.track` is not always the spec's `Track`. The handler returns `musicPlayer.track ?? musicPlayer.remoteTrack`. A
@@ -137,6 +137,49 @@
   `data.track` is `null` while it plays. Read from the app bundle; not live-tested.
 - The spec's `streamingService` enum stops at `3`. The app defines `0` Beatport LINK, `1` Beatsource LINK, `2`
   SoundCloud, `3` Tidal, `4` Spotify, `5` Deezer, `6` Apple Music, `7` iTunes.
+
+### Spec published 2026-11-01 (Lexicon v1.12, not released)
+
+The spec at lexicondj.com was rewritten on 2026-11-01. It describes v1.12, while the newest release is 1.11.15
+(changelog entry 2026-10-15). `docs/lexicon-api-docs.yaml` holds that spec as of 2026-11-04.
+
+In the spec but not in 1.11.15 (live-tested on 1.11.15 unless noted):
+
+- `GET /v1/tracks/selected` and `GET /v1/playlists/selected` return error code 4.
+- `PATCH /v1/track/location` is not in the app's route table (app bundle; not live-tested).
+- `GET /v1/track?id=selected` returns `'id' must be a number`.
+- `limit` and `offset` on `GET /v1/search/tracks` return `'limit' is not allowed`.
+- `filter.fileType` returns `'filter.fileType' is not allowed`.
+- `filter.id` is ignored: `{"id":"499"}` and `{"id":"499,500"}` each returned all 8257 tracks. Do not send it to
+  1.11.15.
+- `filter.tags` with `none` returned 0 tracks; the spec says it finds tracks without tags.
+- `Navigation_SidebarDashboard` and the nine `Playlists_*` control actions are absent from the app bundle, so
+  `POST /v1/control` should reject them with error code 5 (not live-tested).
+- Bearer token authentication, which the spec marks "Starting in Lexicon v1.12".
+
+Search filter behavior on 1.11.15 (live-tested, library of 8257 tracks, 5 added on 2026-11-04):
+
+- `filter.importSource` is ignored and returned all 8257 tracks. It is not in the spec's filterable list.
+- `filter.sizeBytes` works and is in MB. `{"sizeBytes":">100"}` returned 35 tracks.
+- `filter.bpm` accepts `120~121`, which the spec defines as stopping before the upper bound.
+- Date operators: `>2026-11-04` and `>=2026-11-04` both returned the 5 tracks from that day. `<2026-11-04` and
+  `<=2026-11-04` both returned the other 8252, so `<=` leaves that day out.
+- A JSON body on a GET still works: the server merges it over the query string, and the spec describes both forms for
+  `sort`.
+- `filter.id` sent as a number makes the handler throw, and the response is HTTP 200 with only
+  `{"message":"h[r].trim is not a function"}`. The shared handler copies `code` from whatever was thrown and only fails
+  the request when that is set, so any uncoded error on any route looks like this. The spec's error code `8` (HTTP 500)
+  is meant to replace it.
+
+Corrected in this spec; the earlier entries above describe older specs:
+
+- `GET /v1/playing` documents `currentTime` instead of `seconds`.
+- `AudioAnalyzer_Analyze` replaces `TrackBrowser_AnalyzeStart`.
+- `DELETE` for tracks moved to `/v1/tracks`, and `DELETE /v1/playlists` takes `ids` in the JSON body.
+- `MusicPlayer_Load` documents its `id` parameter, and `Application_SetColor`, `Application_SetEnergy`,
+  `Application_SetDanceability`, `Application_SetPopularity`, and `Application_SetHappiness` are in the enum.
+- The four hotkey-only `MusicPlayer_Tempomarker*` actions are out of the enum and documented as doing nothing.
+- `PluginRunActionByName`, `PluginRunAction_<pluginId>:<actionId>`, and `Direct2Cdj_*` are documented.
 
 ## Undocumented Fields in API Responses
 

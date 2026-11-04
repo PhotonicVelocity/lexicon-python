@@ -7,6 +7,9 @@ info:
   version: 1.0.0
   title: Lexicon Local API
   termsOfService: https://www.lexicondj.com/terms
+security:
+  - {}
+  - bearerAuth: []
 tags:
 - name: Track
 - name: Playlist
@@ -19,14 +22,19 @@ paths:
       tags:
         - Track
       summary: Get one track from the Lexicon library
+      description: >
+        Send `selected` as `id` to get the track selected in Lexicon. With several tracks selected this is the topmost one, use `GET /tracks/selected` to get them all. When no track is selected the request fails with error code `113`.
       parameters:
         - in: query
           name: id
-          description: ID of the track
+          description: ID of the track, or `selected` for the track selected in Lexicon
           required: true
-          schema: 
-            type: integer
-            minimum: 1
+          schema:
+            oneOf:
+              - type: integer
+                minimum: 1
+              - type: string
+                enum: [selected]
 
       responses:
         '200':
@@ -43,7 +51,7 @@ paths:
                         $ref: "#/components/schemas/Track"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     patch:
       tags:
@@ -59,13 +67,22 @@ paths:
         Some fields are not editable, most of these fields belong to a file, such as location, bitrate, etc.
 
 
-        Number fields (eg `playCount` or `energy`) can accept a number and string value. A string value must always start with `+` or `-` and will change the value relative to the current value.
+        Number fields (eg `playCount` or `energy`) can accept a number and string value. A string value must always start with `+` or `-` and will change the value relative to the current value. Any other value, such as an object or a boolean, is rejected with a 400; it is never coerced to `0`.
+
+
+        A field name that is not a track field is rejected with a 400, so a typo cannot look like a successful edit.
 
 
         Date fields must be in the YYYY-MM-DD format.
 
 
-        Cue points and beatgrid marker (called tempo markers internally) can be saved as an array. Tags can saved as a number array of tag IDs. See the Cuepoint and Tempomarker fields for all available properties.
+        Cue points and beatgrid marker (called tempo markers internally) can be saved as an array. Tags can be saved as a number array of tag IDs. See the Cuepoint and Tempomarker fields for all available properties.
+
+
+        The response holds the track as it is stored after the edit, so you see the result of a relative edit without another request.
+
+
+        Send `selected` as `id` to edit the tracks selected in Lexicon instead, such as giving whatever the user has selected 5 stars. Every selected track gets the edits, and a relative edit counts from each track's own value. The response then also holds `tracks`, all edited tracks in the order Lexicon shows them, with `track` being the first of them. When no track is selected the request fails with error code `113` and nothing changes.
 
 
         Click the dropdown below to see examples for the full body of a request.
@@ -79,8 +96,11 @@ paths:
                 - id
               properties:
                 id:
-                  type: integer
-                  description: ID of the track
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: [selected]
+                  description: ID of the track, or `selected` for the tracks selected in Lexicon
                 edits:
                   type: object
                   description: Track object of changes to make
@@ -92,6 +112,12 @@ paths:
                   edits:
                     title: "My New Title"
                     energy: 10
+              selected:
+                summary: Rate the selected tracks 5 stars
+                value:
+                  id: selected
+                  edits:
+                    rating: 5
               cuepoints:
                 summary: Saving cue points
                 value:
@@ -117,14 +143,44 @@ paths:
                     tags: [1, 2, 3]
       responses:
         '200':
-          description: Successful operation
+          description: Successful operation. Returns the updated track.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      track:
+                        $ref: "#/components/schemas/Track"
+                      tracks:
+                        type: array
+                        description: Only when `id` is `selected`. Every edited track, in the order Lexicon shows them
+                        items:
+                          $ref: "#/components/schemas/Track"
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
-    delete:
+  "/track/location":
+    patch:
       tags:
       - Track
-      summary: Deletes one track or more in the Lexicon library
+      summary: Changes the location of one track in the Lexicon library
+      description: >
+        Points a track at a different file. This only changes the library, the file itself is never moved or renamed.
+
+
+        The path is normalized before it is saved, so the `location` in the response can differ slightly from the one you sent. Always use the location from the response.
+
+
+        A location can exist only once in Lexicon. When another track already uses the target location the request fails with error code `110` and nothing is changed.
+
+
+        By default the target file has to exist on disk, otherwise the request fails with error code `111`. Send `checkFileExists: false` to relocate to a file that is not there, for example when the drive is not mounted.
+
+
+        Streaming tracks cannot be relocated.
       requestBody:
         required: true
         content:
@@ -132,19 +188,62 @@ paths:
             schema:
               type: object
               required:
-                - ids
+                - id
+                - location
               properties:
-                ids:
-                  type: array
-                  items:
-                    type: integer
-                  description: Array of track IDs to delete
-                  example: [1, 2, 3]
+                id:
+                  type: integer
+                  description: ID of the track
+                location:
+                  type: string
+                  description: Full path to the new file
+                  example: "/Users/Daft/Music/Daft Punk - Around The World.mp3"
+                checkFileExists:
+                  type: boolean
+                  description: Check whether the file exists on disk before saving the new location
+                  default: true
+            examples:
+              basic:
+                summary: Relocate a track to another file
+                value:
+                  id: 1
+                  location: "/Users/Daft/Music/Daft Punk - Around The World.mp3"
+              skipFileCheck:
+                summary: Relocate without checking the disk
+                value:
+                  id: 1
+                  location: "/Volumes/USB/Daft Punk - Around The World.mp3"
+                  checkFileExists: false
       responses:
         '200':
           description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      track:
+                        $ref: "#/components/schemas/Track"
+
         '400':
-          description: Bad request
+          description: >
+            Bad request
+
+
+            `100` - Track does not exist
+
+
+            `110` - Another track already has this location
+
+
+            `111` - The file does not exist on disk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   "/tracks":
     post:
@@ -182,7 +281,7 @@ paths:
                         $ref: "#/components/schemas/Track"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     get:
       tags:
@@ -192,19 +291,20 @@ paths:
       parameters:
         - in: query
           name: limit
-          description: Amount of tracks. Max 1000. Default is 1000, set to 10 here for performance.
-          default: 10
-          schema: 
+          description: Amount of tracks. Max 1000. Default is 1000, the example uses 10 to keep the response small.
+          example: 10
+          schema:
             type: integer
             maximum: 1000
             minimum: 1
+            default: 1000
         - in: query
           name: offset
           description: Offset from start of tracks
-          default: 0
-          schema: 
+          schema:
             type: integer
             minimum: 0
+            default: 0
         - $ref: '#/components/parameters/trackSource'
         - $ref: '#/components/parameters/trackFields'
         - $ref: '#/components/parameters/trackSort'
@@ -235,7 +335,59 @@ paths:
                           $ref: "#/components/schemas/Track"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
+
+    delete:
+      tags:
+      - Track
+      summary: Deletes one track or more in the Lexicon library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: Array of track IDs to delete
+                  example: [1, 2, 3]
+      responses:
+        '200':
+          description: Successful operation
+        '400':
+          $ref: '#/components/responses/Error'
+
+  "/tracks/selected":
+    get:
+      tags:
+        - Track
+      summary: Get the IDs of the tracks selected in Lexicon
+      description: >
+        The tracks selected in the track browser the user last worked in, in the order Lexicon shows them. `ids` is always an array: empty when nothing is selected or no track browser is open, one ID for a single selected track.
+
+
+        To act on the selection directly, send `selected` as the `id` of `GET /track` or `PATCH /track`.
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: integer
+                        example: [12, 7, 33]
 
   "/search/tracks":
     get:
@@ -243,21 +395,60 @@ paths:
         - Track
       summary: Searches the Lexicon library for tracks
       description: >
-        The `filter` value is an object of type Track that can be filled with key values that Lexicon will filter on. Any unknown keys will be dropped.
-        String filtering is always case insensitive and will match if the given string is anywhere inside the value.
-        Number filtering input are strings and support number operators like `>` and `>=`, see the [manual](https://www.lexicondj.com/manual/track-browser).
-          
+        The `filter` value is an object with the fields to filter on. These are the same filters as the columns of the Lexicon track browser, and a track has to match all of them. A field that cannot be filtered is rejected with a 400, so a typo cannot quietly return the whole library.
 
-        The `location` field is a special field that converts the input to a unique location before finding results. A unique location is a string that is: string normalized, unicode normalized, lowercased and for macOS has the main drive name prefixed. So a location like `/Users/chris/Music/foo.mp3` is changed to `/Volumes/Macintosh HD/chris/Music/foo.mp3`. This is the basis of unique tracks in Lexicon. 
-          
 
-        Returns an array of tracks that match the given filter. There is a maximum of 1000 tracks in the result.
+        Filterable fields: `id`, `title`, `artist`, `albumTitle`, `label`, `remixer`, `mix`, `composer`, `producer`, `grouping`, `lyricist`, `comment`, `key`, `genre`, `bpm`, `rating`, `color`, `year`, `duration`, `bitrate`, `playCount`, `location`, `lastPlayed`, `dateAdded`, `dateModified`, `sizeBytes`, `sampleRate`, `trackNumber`, `energy`, `danceability`, `popularity`, `happiness`, `extra1`, `extra2`, `tags` and `fileType`. Archived and incoming tracks are chosen with `source`, not with a filter.
+
+
+        **Text** matches anywhere inside the value and ignores case. `color` is text too, so `red` also finds `red_dark`. `none` finds tracks where the field is empty. That works on the text fields except `location`, and on `bpm`, `bitrate`, `sampleRate`, `lastPlayed` and `tags`.
+
+
+        **Numbers** are sent as strings and take an operator: `>=120`, `>120`, `<=120`, `<120`, `!120` (not 120), `120-130` (120 up to and including 130) and `120~130` (at least 120, below 130). A plain number must match exactly, except for `bpm` where `128` also finds 128.5. `sizeBytes` is filtered in MB.
+
+
+        **Dates** are `YYYY-MM-DD` (or the date format set in Lexicon). `2024-05-01` finds that day, `>2024-05-01` that day and later, `<2024-05-01` everything before it.
+
+
+        **`key`** accepts any notation Lexicon shows, such as `8A` or `Am`.
+
+
+        **`tags`** takes Custom Tag labels, separated by commas. A track matches when it has any of them. Start with `~` to require all of them (`~Vocals,Warmup`), and put `!` before a label to exclude it (`!Vocals`). A label that does not exist matches nothing. `none` finds tracks without any tag, unless one of your tags is labeled None.
+
+
+        **`fileType`** is the file extension, such as `mp3` or `flac`, ignoring case.
+
+
+        **`id`** looks tracks up by id. A single id or a comma separated list is accepted, so playlist membership can be resolved to track metadata in one request, for example `{"id": "12,48,153"}`. An id that does not exist returns no results.
+
+
+        **`location`** is converted to a unique location before finding results. A unique location is a string that is: string normalized, unicode normalized, lowercased and for macOS has the main drive name prefixed. So a location like `/Users/chris/Music/foo.mp3` is changed to `/Volumes/Macintosh HD/chris/Music/foo.mp3`. This is the basis of unique tracks in Lexicon.
+
+
+        Returns an array of tracks that match the given filter. Use `limit` and `offset` to page through them; `total` always reports the full number of matches, not the size of the page.
       parameters:
         - $ref: '#/components/parameters/trackSource'
-        - in: query 
+        - in: query
+          name: limit
+          description: Amount of tracks. Max 1000. Default is 1000.
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            default: 1000
+        - in: query
+          name: offset
+          description: Offset from the start of the matching tracks
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - in: query
           name: filter
           style: deepObject
-          description: The object with key values that are filtered on. See the Track schema to see available fields and their types.
+          explode: true
+          description: >
+            The object with the fields to filter on, see the description above. In a query string, send each field in bracket form, `filter[artist]=Daft%20Punk&filter[bpm]=%3E%3D120`.
           schema:
             type: object
           example: >
@@ -294,14 +485,18 @@ paths:
                           $ref: "#/components/schemas/Track"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/playlist":
     get: 
       tags:
         - Playlist
       summary: Gets one playlist from the Lexicon library by the playlist ID
-      description: Includes track IDs for that playlist in original order
+      description: >
+        Includes the track IDs of the playlist in their original order.
+
+
+        For a folder, `trackIds` holds the tracks of every playlist inside it, each track once. A smartlist is refreshed before its tracks are listed.
       parameters:
         - in: query
           name: id
@@ -326,7 +521,7 @@ paths:
                         $ref: "#/components/schemas/Playlist"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     post:
       tags:
@@ -373,13 +568,17 @@ paths:
                         description: ID of the new playlist
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     patch:
       tags:
         - Playlist
       summary: Updates a playlist
-      description: Update playlist properties
+      description: >
+        Update playlist properties.
+
+
+        The root folder is the invisible container that the whole playlist tree hangs off. It cannot be renamed or moved, and a request that targets it is rejected with error code `112`.
       requestBody:
         required: true
         content:
@@ -399,11 +598,11 @@ paths:
                   example: My Playlist
                 parentId:
                   type: integer
-                  description: Parent playlist ID
+                  description: ID of the folder to move the playlist into. It is added at the bottom of that folder unless `position` is also given.
                   example: 123
                 position:
                   type: integer
-                  description: Position (index) inside the parent folder
+                  description: Index inside the parent folder, starting at 0. The other playlists in that folder shift to make room, like dragging in the playlist tree. Together with `parentId`, this is the index in the new folder.
                   example: 0
                 smartlist:
                   $ref: '#/components/schemas/Smartlist'
@@ -411,10 +610,21 @@ paths:
 
       responses:
         '200':
-          description: Successful operation
+          description: Successful operation. Returns the ID of the playlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: ID of the playlist
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/playlist-by-path":
     get:
@@ -422,13 +632,13 @@ paths:
         - Playlist
       summary: Gets one playlist from the Lexicon library by the playlist path
       description: >
-        Includes track IDs for that playlist in original order.
+        Includes the track IDs of the playlist in their original order. For a folder, the tracks of every playlist inside it, each track once.
 
 
         You don't need to know the playlist ID for this endpoint, only the path. This is very useful if you re-import your library since all IDs will be reset.
 
 
-        This returns the first playlist found with the given path. For more control, you can use the `type` parameter.
+        `type` defaults to `2`, so only normal playlists are found unless you pass it. To find a folder or a smartlist, send its type. When several playlists of that type share the path, the first one is returned.
       parameters:
         - in: query
           name: path
@@ -441,11 +651,12 @@ paths:
               type: string
         - in: query
           name: type
-          description: Playlist type. Useful if you have multiple playlists with the same name.
+          description: Type of the playlist to find. Defaults to `2`, a normal playlist, so a folder (`1`) or smartlist (`3`) is only found when you send its type.
           required: false
-          default: '2'
           schema:
-            $ref: "#/components/schemas/Playlist Type"
+            allOf:
+              - $ref: "#/components/schemas/Playlist Type"
+            default: '2'
 
       responses:
         '200':
@@ -462,7 +673,7 @@ paths:
                         $ref: "#/components/schemas/Playlist"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/playlist-tracks":
     patch:
@@ -500,7 +711,7 @@ paths:
           description: Successful operation
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     delete:
       tags:
@@ -533,7 +744,7 @@ paths:
           description: Successful operation
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/playlists":
     get: 
@@ -561,24 +772,60 @@ paths:
       tags:
         - Playlist
       summary: Deletes one or more playlists
-      description: Deletes one or more playlists by playlist ID
-      parameters:
-        - in: query
-          name: ids
-          description: Array of playlist IDs
-          required: true
-          default: [123, 124, 125]
-          schema: 
-            type: array
-            items:
-              type: integer
+      description: >
+        Deletes one or more playlists by playlist ID.
+
+
+        The root folder cannot be deleted. If it appears anywhere in `ids` the whole request is rejected with error code `112` and nothing is deleted.
+
+
+        Send `ids` in a JSON body. Only GET requests read the query string.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: Array of playlist IDs to delete
+                  example: [123, 124, 125]
 
       responses:
         '200':
           description: Successful operation
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
+
+  "/playlists/selected":
+    get:
+      tags:
+        - Playlist
+      summary: Get the IDs of the playlists selected in Lexicon
+      description: >
+        The playlists, smartlists and folders selected in the playlist tree. A selected folder is listed by its own ID, not by the playlists inside it, and the root folder is never listed. `ids` is always an array, empty when nothing is selected.
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: integer
+                        example: [123, 124]
 
   "/tag":
     post:
@@ -607,24 +854,27 @@ paths:
 
       responses:
         '200':
-          description: Successful operation. Returns the new Custom Tag object.
+          description: Successful operation. Returns the new Custom Tag object at the top level of the response, not inside `data`.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    $ref: "#/components/schemas/Custom Tag"
+                $ref: "#/components/schemas/Custom Tag"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     patch:
       tags:
         - Custom Tag
       summary: Updates an existing Custom Tag
-      description: Updates properties of an existing Custom Tag
+      description: >
+        Updates properties of an existing Custom Tag.
+
+
+        A `position` that another tag in the category already has is rejected with error code `108`. To reorder several tags at once, send the whole order to `PATCH /tag-category` as `tags`.
+
+
+        When `categoryId` moves the tag to another category, it goes to the end of that category unless you also send a free `position`. The tags it leaves behind are renumbered so their positions stay contiguous.
       requestBody:
         required: true
         content:
@@ -653,18 +903,14 @@ paths:
 
       responses:
         '200':
-          description: Successful operation. Returns the updated Custom Tag object.
+          description: Successful operation. Returns the updated Custom Tag object at the top level of the response, not inside `data`.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    $ref: "#/components/schemas/Custom Tag"
+                $ref: "#/components/schemas/Custom Tag"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     delete:
       tags:
@@ -687,13 +933,21 @@ paths:
         '200':
           description: Successful operation
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/tags":
     get:
       tags:
         - Custom Tag
       summary: Get all Custom Tags and Custom Tag categories
+      description: >
+        Both arrays come back in the order Lexicon displays them: categories by their own `position`, and the tags inside each category by `position`.
+
+
+        `position` is what orders tags inside a category, so use it rather than the tag id if you want to show tags the way the user arranged them. Tag ids are handed out in creation order, so sorting by id puts the newest tag last.
+
+
+        Reorder a tag by sending a new `position` to `PATCH /tag`. A position that is already taken in that category is rejected with error code `108`, so move the occupant out of the way first.
       responses:
         '200':
           description: Successful operation
@@ -740,24 +994,24 @@ paths:
 
       responses:
         '200':
-          description: Successful operation. Returns the new Custom Tag category object.
+          description: Successful operation. Returns the new Custom Tag category object at the top level of the response, not inside `data`.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    $ref: "#/components/schemas/Custom Tag Category"
+                $ref: "#/components/schemas/Custom Tag Category"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     patch:
       tags:
         - Custom Tag
       summary: Updates an existing Custom Tag category
-      description: Updates properties of an existing Custom Tag category
+      description: >
+        Updates properties of an existing Custom Tag category.
+
+
+        A label that another category already has, ignoring case, is rejected with error code `107`.
       requestBody:
         required: true
         content:
@@ -783,23 +1037,26 @@ paths:
                   type: array
                   items:
                     type: integer
-                  description: The tags in this Custom Tag category as array of Custom Tag IDs
+                  description: >
+                    Every tag of this category as Custom Tag IDs, in the order you want them. Tags from other categories are moved into this one, and the categories they leave are renumbered.
+                    Each tag the category already has must be in the list, otherwise the request is rejected with error code `5`, because a tag cannot be without a category. Move a tag out with `PATCH /tag` or delete it instead.
+                    An unknown tag ID is rejected with error code `109`.
                   example: [1, 2]
+                position:
+                  type: integer
+                  description: Index of the category among all categories, starting at 0. The other categories shift to make room.
+                  example: 0
 
       responses:
         '200':
-          description: Successful operation. Returns the updated Custom Tag category object.
+          description: Successful operation. Returns the updated Custom Tag category object at the top level of the response, not inside `data`.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    $ref: "#/components/schemas/Custom Tag Category"
+                $ref: "#/components/schemas/Custom Tag Category"
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
     delete:
       tags:
@@ -823,7 +1080,7 @@ paths:
         '200':
           description: Successful operation
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/control":
     post:
@@ -831,10 +1088,16 @@ paths:
         - Control
       summary: Run Lexicon commands
       description: >
-        With the control endpoint, you can run commands in Lexicon.
+        With the control endpoint, you can run commands in Lexicon: the same ones you can bind to a hotkey.
 
 
         The [Stream Deck](https://discuss.lexicondj.com/t/controlling-lexicon-from-your-stream-deck/54) plugin also uses this endpoint. If you want to create custom controls from outside Lexicon, this is what you should use.
+
+
+        Many actions work on the tracks selected in the track browser or on the track loaded in the player, exactly like their hotkey. See the Control Actions schema at the bottom for every action and its parameters.
+
+
+        The response is empty. An action starts something in Lexicon and the response does not wait for it to finish, and there is no completion signal. An action that needs something that is not there, such as a loaded track or a selection, does nothing and still returns 200. An unknown action is rejected with error code `5`.
       requestBody:
         required: true
         content:
@@ -862,13 +1125,27 @@ paths:
                   action: MusicPlayer_Hotcue
                   parameters:
                     index: 0
+              load:
+                summary: Load a track into the player
+                value:
+                  action: MusicPlayer_Load
+                  parameters:
+                    id: 1
+              analyze:
+                summary: Analyze tracks
+                value:
+                  action: AudioAnalyzer_Analyze
+                  parameters:
+                    trackIds: [1, 2, 3]
+                    analyzeBeatgrid: true
+                    tempoRange: "88_175"
 
       responses:
         '200':
           description: Successful operation
 
         '400':
-          description: Bad request
+          $ref: '#/components/responses/Error'
 
   "/playing":
     get:
@@ -876,7 +1153,7 @@ paths:
         - Music Player
       summary: Get the currently playing track
       description: >
-        Returns the currently playing track and progress of the player. Returns `null` if no track is playing.
+        Returns the currently playing track and the position of the player. When there is no track, `track`, `progress` and `currentTime` are all `null`.
 
       responses:
         '200':
@@ -891,10 +1168,14 @@ paths:
                     properties:
                       track:
                         $ref: "#/components/schemas/Track"
-                      progress: 
+                      progress:
                         type: number
-                      seconds:
+                        description: Position in the track from 0 to 1
+                        example: 0.25
+                      currentTime:
                         type: number
+                        description: Position in the track in seconds
+                        example: 91.5
 
   "/queue":
     get:
@@ -922,6 +1203,11 @@ paths:
                           $ref: "#/components/schemas/Track"
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Starting in Lexicon v1.12: the API token from the Lexicon settings under Integrations. Only needed when Require Authentication is on."
   schemas:
     Track:
       type: object
@@ -1096,6 +1382,7 @@ components:
           items:
             type: number
           example: [1, 2]
+          description: Custom Tag IDs, ordered the way Lexicon displays them; by Custom Tag category, then by the tag's position within it. The order you send to PATCH /track is not preserved, because a track's tags have no order of their own.
         tempomarkers:
           type: array
           items:
@@ -1280,6 +1567,18 @@ components:
         color:
           $ref: '#/components/schemas/Color'
           example: red
+        activeLoop:
+          type: boolean
+          description: For a loop cue, whether the loop is active when the track is loaded, in DJ apps that support it
+          example: false
+        trackId:
+          type: integer
+          description: ID of the track. Set by Lexicon, a value you send is replaced
+          example: 1
+        data:
+          type: object
+          description: Extra data from the DJ app the cue point was imported from. Send it back unchanged to keep it
+          example: {}
 
     Tempomarker:
       type: object
@@ -1301,6 +1600,14 @@ components:
           type: number
           description: BPM of the marker from that point onwards
           example: 174
+        trackId:
+          type: integer
+          description: ID of the track. Set by Lexicon, a value you send is replaced
+          example: 1
+        data:
+          type: object
+          description: Extra data from the DJ app the marker was imported from. Send it back unchanged to keep it
+          example: {}
 
     Custom Tag:
       type: object
@@ -1323,6 +1630,11 @@ components:
           type: number
           example: 0
           description: Index of the Custom Tags in the Custom Tags category
+        shortcut:
+          type: integer
+          nullable: true
+          example: null
+          description: Tag shortcut number (1 to 20) this tag is assigned to, used by `Application_Tags_AddShortcut` and `Application_Tags_ToggleShortcut`. `null` when it has none
 
     Custom Tag Category:
       type: object
@@ -1344,7 +1656,7 @@ components:
         color:
           type: string
           example: '#FF00FF'
-          description: Color of the Custom Tags category
+          description: Color of the Custom Tags category. Left out when the category has no color
         tags:
           type: array
           items:
@@ -1416,7 +1728,6 @@ components:
         - dateModified
         - sizeBytes
         - sampleRate
-        - fileType
         - trackNumber
         - energy
         - danceability
@@ -1588,18 +1899,25 @@ components:
         - EveryTextField
         - IsAnalyzed
         - WaveformPreview
+        - CustomFileName
     
     Control Actions:
       type: string
-      enum: 
+      enum:
         - Appearance_ToggleTheme
+        - Appearance_ToggleCuey
+        - Appearance_ZoomIn
+        - Appearance_ZoomOut
         - Navigation_ToggleSidebar
         - Navigation_ExpandPlaylists
         - Navigation_CollapsePlaylists
         - Navigation_ToggleBeatgridControls
         - Navigation_ToggleSidepanel
+        - Navigation_ShowTrackTimeline
+        - Navigation_HideTrackTimeline
         - Navigation_SelectCurrentPlaying
         - Navigation_EditCurrentPlaying
+        - Navigation_SidebarDashboard
         - Navigation_SidebarTracksAll
         - Navigation_SidebarTracksIncoming
         - Navigation_SidebarTracksArchive
@@ -1613,19 +1931,118 @@ components:
         - Navigation_FocusPlaylistsFilter
         - Navigation_SidebarBeatport
         - Application_OpenSettings
-        - Application_OpenHelp
         - Application_OpenSearch
+        - Application_OpenActionCenter
         - Application_OpenUndo
+        - Application_UndoLast
+        - Application_OpenHotkeys
+        - Application_Quit
+        - Application_OpenHelp
         - Application_ToggleWindow
         - Application_OpenEditor
         - Application_OpenTags
+        - Application_CheckForUpdates
+        - Application_OpenDuplicateTracksDialog
+        - Application_OpenUnusedFilesDialog
+        - Application_OpenBrokenTracksDialog
+        - Application_OpenRelocateDialog
+        - Application_OpenReencodeFilesDialog
+        - Application_OpenStreamingTransferDialog
+        - Application_OpenPlaylistOccurrenceDialog
+        - Application_OpenImportTagsFromFileDialog
+        - Application_OpenSmartlistGeneratorDialog
+        - Application_OpenBackupCreateDialog
+        - Application_OpenBackupRestoreDialog
+        - Application_OpenBackupCloudDialog
+        - Application_OpenCleanupDialog
+        - Application_OpenUserFeedbackDialog
+        - Application_OpenIntegrityCheckDialog
         - Application_SetRating
-        - Application_Quit
+        - Application_SetRating0
+        - Application_SetRating1
+        - Application_SetRating2
+        - Application_SetRating3
+        - Application_SetRating4
+        - Application_SetRating5
+        - Application_SetEnergy
+        - Application_SetDanceability
+        - Application_SetPopularity
+        - Application_SetHappiness
         - Application_ArchiveSelected
+        - Application_SetColor_None
+        - Application_SetColor_Red_Dark
+        - Application_SetColor_Red
+        - Application_SetColor_Red_Light
+        - Application_SetColor_Red_Orange
+        - Application_SetColor_Orange
+        - Application_SetColor_Beige
+        - Application_SetColor_Yellow_Dark
+        - Application_SetColor_Yellow
+        - Application_SetColor_Lime
+        - Application_SetColor_Green_Light
+        - Application_SetColor_Green
+        - Application_SetColor_Green_Dark
+        - Application_SetColor_Teal
+        - Application_SetColor_Aqua
+        - Application_SetColor_Aqua_Dark
+        - Application_SetColor_Blue_Light
+        - Application_SetColor_Blue
+        - Application_SetColor_Blue_Dark
+        - Application_SetColor_Blue_Violet
+        - Application_SetColor_Violet
+        - Application_SetColor_Violet_Light
+        - Application_SetColor_Magenta
+        - Application_SetColor_Magenta_Dark
+        - Application_SetColor_Magenta_Red
+        - Application_SetColor_Grey_Light
+        - Application_SetColor_Grey_Dark
+        - Application_SetColor_Black
+        - Application_SetColor_White
+        - Application_SetColor
         - Application_ApplyCuepointGeneratorTemplate
         - Application_ApplyCuepointGeneratorTemplateSelectedTracks
         - Application_Tags_AddShortcut
+        - Application_Tags_AddShortcut1
+        - Application_Tags_AddShortcut2
+        - Application_Tags_AddShortcut3
+        - Application_Tags_AddShortcut4
+        - Application_Tags_AddShortcut5
+        - Application_Tags_AddShortcut6
+        - Application_Tags_AddShortcut7
+        - Application_Tags_AddShortcut8
+        - Application_Tags_AddShortcut9
+        - Application_Tags_AddShortcut10
+        - Application_Tags_AddShortcut11
+        - Application_Tags_AddShortcut12
+        - Application_Tags_AddShortcut13
+        - Application_Tags_AddShortcut14
+        - Application_Tags_AddShortcut15
+        - Application_Tags_AddShortcut16
+        - Application_Tags_AddShortcut17
+        - Application_Tags_AddShortcut18
+        - Application_Tags_AddShortcut19
+        - Application_Tags_AddShortcut20
         - Application_Tags_ToggleShortcut
+        - Application_Tags_ToggleShortcut1
+        - Application_Tags_ToggleShortcut2
+        - Application_Tags_ToggleShortcut3
+        - Application_Tags_ToggleShortcut4
+        - Application_Tags_ToggleShortcut5
+        - Application_Tags_ToggleShortcut6
+        - Application_Tags_ToggleShortcut7
+        - Application_Tags_ToggleShortcut8
+        - Application_Tags_ToggleShortcut9
+        - Application_Tags_ToggleShortcut10
+        - Application_Tags_ToggleShortcut11
+        - Application_Tags_ToggleShortcut12
+        - Application_Tags_ToggleShortcut13
+        - Application_Tags_ToggleShortcut14
+        - Application_Tags_ToggleShortcut15
+        - Application_Tags_ToggleShortcut16
+        - Application_Tags_ToggleShortcut17
+        - Application_Tags_ToggleShortcut18
+        - Application_Tags_ToggleShortcut19
+        - Application_Tags_ToggleShortcut20
         - Application_Tags_Clear
         - MusicPlayer_LoadSelected
         - MusicPlayer_Load
@@ -1636,40 +2053,192 @@ components:
         - MusicPlayer_TogglePlay
         - MusicPlayer_Eject
         - MusicPlayer_ToggleQuantize
+        - MusicPlayer_ToggleActiveLoops
         - MusicPlayer_Cue
         - MusicPlayer_CuePlay
         - MusicPlayer_Hotcue
+        - MusicPlayer_Hotcue1
+        - MusicPlayer_Hotcue2
+        - MusicPlayer_Hotcue3
+        - MusicPlayer_Hotcue4
+        - MusicPlayer_Hotcue5
+        - MusicPlayer_Hotcue6
+        - MusicPlayer_Hotcue7
+        - MusicPlayer_Hotcue8
+        - MusicPlayer_Hotcue9
+        - MusicPlayer_Hotcue10
+        - MusicPlayer_Hotcue11
+        - MusicPlayer_Hotcue12
+        - MusicPlayer_Hotcue13
+        - MusicPlayer_Hotcue14
+        - MusicPlayer_Hotcue15
+        - MusicPlayer_Hotcue16
         - MusicPlayer_DeleteHotcue
+        - MusicPlayer_DeleteHotcue1
+        - MusicPlayer_DeleteHotcue2
+        - MusicPlayer_DeleteHotcue3
+        - MusicPlayer_DeleteHotcue4
+        - MusicPlayer_DeleteHotcue5
+        - MusicPlayer_DeleteHotcue6
+        - MusicPlayer_DeleteHotcue7
+        - MusicPlayer_DeleteHotcue8
+        - MusicPlayer_DeleteHotcue9
+        - MusicPlayer_DeleteHotcue10
+        - MusicPlayer_DeleteHotcue11
+        - MusicPlayer_DeleteHotcue12
+        - MusicPlayer_DeleteHotcue13
+        - MusicPlayer_DeleteHotcue14
+        - MusicPlayer_DeleteHotcue15
+        - MusicPlayer_DeleteHotcue16
         - MusicPlayer_CreateHotcue
+        - MusicPlayer_CreateHotcue1
+        - MusicPlayer_CreateHotcue2
+        - MusicPlayer_CreateHotcue3
+        - MusicPlayer_CreateHotcue4
+        - MusicPlayer_CreateHotcue5
+        - MusicPlayer_CreateHotcue6
+        - MusicPlayer_CreateHotcue7
+        - MusicPlayer_CreateHotcue8
+        - MusicPlayer_CreateHotcue9
+        - MusicPlayer_CreateHotcue10
+        - MusicPlayer_CreateHotcue11
+        - MusicPlayer_CreateHotcue12
+        - MusicPlayer_CreateHotcue13
+        - MusicPlayer_CreateHotcue14
+        - MusicPlayer_CreateHotcue15
+        - MusicPlayer_CreateHotcue16
+        - MusicPlayer_MoveHotcue
+        - MusicPlayer_MoveHotcue1
+        - MusicPlayer_MoveHotcue2
+        - MusicPlayer_MoveHotcue3
+        - MusicPlayer_MoveHotcue4
+        - MusicPlayer_MoveHotcue5
+        - MusicPlayer_MoveHotcue6
+        - MusicPlayer_MoveHotcue7
+        - MusicPlayer_MoveHotcue8
+        - MusicPlayer_MoveHotcue9
+        - MusicPlayer_MoveHotcue10
+        - MusicPlayer_MoveHotcue11
+        - MusicPlayer_MoveHotcue12
+        - MusicPlayer_MoveHotcue13
+        - MusicPlayer_MoveHotcue14
+        - MusicPlayer_MoveHotcue15
+        - MusicPlayer_MoveHotcue16
+        - MusicPlayer_ToggleMemoryCue
+        - MusicPlayer_ToggleMemoryCue1
+        - MusicPlayer_ToggleMemoryCue2
+        - MusicPlayer_ToggleMemoryCue3
+        - MusicPlayer_ToggleMemoryCue4
+        - MusicPlayer_ToggleMemoryCue5
+        - MusicPlayer_ToggleMemoryCue6
+        - MusicPlayer_ToggleMemoryCue7
+        - MusicPlayer_ToggleMemoryCue8
+        - MusicPlayer_ToggleMemoryCue9
+        - MusicPlayer_ToggleMemoryCue10
+        - MusicPlayer_ToggleMemoryCue11
+        - MusicPlayer_ToggleMemoryCue12
+        - MusicPlayer_ToggleMemoryCue13
+        - MusicPlayer_ToggleMemoryCue14
+        - MusicPlayer_ToggleMemoryCue15
+        - MusicPlayer_ToggleMemoryCue16
+        - MusicPlayer_AddEmptyCue
         - MusicPlayer_TempomarkerSet
         - MusicPlayer_TempomarkerAdd
         - MusicPlayer_TempomarkerRemove
         - MusicPlayer_TempomarkerDoubleBpm
         - MusicPlayer_TempomarkerHalveBpm
-        - MusicPlayer_TempomarkerMoveGridLeft
-        - MusicPlayer_TempomarkerMoveGridRight
-        - MusicPlayer_TempomarkerIncreaseBpm
-        - MusicPlayer_TempomarkerDecreaseBpm
-        - MusicPlayer_TempomarkerTapBpm
         - MusicPlayer_ToggleMetronome
         - MusicPlayer_TempomarkerFind
+        - MusicPlayer_FocusBpmField
         - MusicPlayer_JumpBeats
+        - MusicPlayer_JumpForwardBeats1
+        - MusicPlayer_JumpForwardBeats4
+        - MusicPlayer_JumpForwardBeats8
+        - MusicPlayer_JumpForwardBeats16
+        - MusicPlayer_JumpForwardBeats32
+        - MusicPlayer_JumpForwardBeats64
+        - MusicPlayer_JumpForwardBeats128
+        - MusicPlayer_JumpBackwardBeats1
+        - MusicPlayer_JumpBackwardBeats4
+        - MusicPlayer_JumpBackwardBeats8
+        - MusicPlayer_JumpBackwardBeats16
+        - MusicPlayer_JumpBackwardBeats32
+        - MusicPlayer_JumpBackwardBeats64
+        - MusicPlayer_JumpBackwardBeats128
+        - MusicPlayer_JumpSeconds
+        - MusicPlayer_JumpForwardSeconds5
+        - MusicPlayer_JumpForwardSeconds15
+        - MusicPlayer_JumpForwardSeconds30
+        - MusicPlayer_JumpForwardSeconds60
+        - MusicPlayer_JumpBackwardSeconds5
+        - MusicPlayer_JumpBackwardSeconds15
+        - MusicPlayer_JumpBackwardSeconds30
+        - MusicPlayer_JumpBackwardSeconds60
         - MusicPlayer_JumpStart
         - MusicPlayer_JumpEnd
         - MusicPlayer_ApplyCueTemplate
+        - MusicPlayer_ApplyCueTemplate1
+        - MusicPlayer_ApplyCueTemplate2
+        - MusicPlayer_ApplyCueTemplate3
+        - MusicPlayer_ApplyCueTemplate4
+        - MusicPlayer_ApplyCueTemplate5
+        - MusicPlayer_ApplyCueTemplate6
+        - MusicPlayer_ApplyCueTemplate7
+        - MusicPlayer_ApplyCueTemplate8
+        - MusicPlayer_ApplyCueTemplate9
+        - MusicPlayer_ApplyCueTemplate10
+        - MusicPlayer_ApplyCueTemplate11
+        - MusicPlayer_ApplyCueTemplate12
+        - MusicPlayer_ApplyCueTemplate13
+        - MusicPlayer_ApplyCueTemplate14
+        - MusicPlayer_ApplyCueTemplate15
+        - MusicPlayer_ApplyCueTemplate16
+        - MusicPlayer_AddAndApplyCueTemplate
+        - MusicPlayer_AddAndApplyCueTemplate1
+        - MusicPlayer_AddAndApplyCueTemplate2
+        - MusicPlayer_AddAndApplyCueTemplate3
+        - MusicPlayer_AddAndApplyCueTemplate4
+        - MusicPlayer_AddAndApplyCueTemplate5
+        - MusicPlayer_AddAndApplyCueTemplate6
+        - MusicPlayer_AddAndApplyCueTemplate7
+        - MusicPlayer_AddAndApplyCueTemplate8
+        - MusicPlayer_AddAndApplyCueTemplate9
+        - MusicPlayer_AddAndApplyCueTemplate10
+        - MusicPlayer_AddAndApplyCueTemplate11
+        - MusicPlayer_AddAndApplyCueTemplate12
+        - MusicPlayer_AddAndApplyCueTemplate13
+        - MusicPlayer_AddAndApplyCueTemplate14
+        - MusicPlayer_AddAndApplyCueTemplate15
+        - MusicPlayer_AddAndApplyCueTemplate16
         - MusicPlayer_LoopDouble
         - MusicPlayer_LoopHalve
         - MusicPlayer_LoopCreate
+        - MusicPlayer_LoopCreate4
+        - MusicPlayer_LoopCreate8
+        - MusicPlayer_LoopCreate16
+        - MusicPlayer_LoopCreate32
+        - MusicPlayer_LoopCreate64
+        - MusicPlayer_LoopCreate128
+        - MusicPlayer_LoopToggleActive
+        - MusicPlayer_AddCueAsLast
+        - MusicPlayer_DeletePreviousCue
+        - MusicPlayer_TempomarkerTapBpm
         - MusicPlayer_ZoomOut
         - MusicPlayer_ZoomIn
         - MusicPlayer_Seek
+        - MusicPlayer_ClearQueue
+        - MusicPlayer_ShuffleQueue
         - Incoming_SelectedDone
         - Incoming_ForceRefresh
         - CloudFileBackup_UploadSelected
         - TrackBrowser_FocusFilter
+        - TrackBrowser_FocusFilter_Title
+        - TrackBrowser_FocusFilter_Artist
+        - TrackBrowser_FocusFilter_Genre
+        - TrackBrowser_FocusFilter_Comment
         - TrackBrowser_ClearFilter
+        - TrackBrowser_RefreshSmartlist
         - TrackBrowser_Analyze
-        - TrackBrowser_AnalyzeStart
         - TrackBrowser_ReloadTags
         - TrackBrowser_CuePointGenerator
         - TrackBrowser_Discovery
@@ -1678,8 +2247,53 @@ components:
         - TrackBrowser_MixableTracks
         - TrackBrowser_Relocate
         - TrackBrowser_OpenFolder
+        - TrackBrowser_SendToNewPlaylist
+        - TrackBrowser_SendToDuplicateMerge
+        - TrackBrowser_SendToIncoming
+        - TrackBrowser_SendToStoreLinks
+        - TrackBrowser_SendToMoveFiles
         - FavoritePlaylists_ShowPlaylist
+        - FavoritePlaylists_ShowPlaylist1
+        - FavoritePlaylists_ShowPlaylist2
+        - FavoritePlaylists_ShowPlaylist3
+        - FavoritePlaylists_ShowPlaylist4
+        - FavoritePlaylists_ShowPlaylist5
+        - FavoritePlaylists_ShowPlaylist6
+        - FavoritePlaylists_ShowPlaylist7
+        - FavoritePlaylists_ShowPlaylist8
+        - FavoritePlaylists_ShowPlaylist9
+        - FavoritePlaylists_ShowPlaylist10
+        - FavoritePlaylists_ShowPlaylist11
+        - FavoritePlaylists_ShowPlaylist12
+        - FavoritePlaylists_ShowPlaylist13
+        - FavoritePlaylists_ShowPlaylist14
+        - FavoritePlaylists_ShowPlaylist15
+        - FavoritePlaylists_ShowPlaylist16
+        - FavoritePlaylists_ShowPlaylist17
+        - FavoritePlaylists_ShowPlaylist18
+        - FavoritePlaylists_ShowPlaylist19
+        - FavoritePlaylists_ShowPlaylist20
         - FavoritePlaylists_AddSelectedTracks
+        - FavoritePlaylists_AddSelectedTracksPlaylist1
+        - FavoritePlaylists_AddSelectedTracksPlaylist2
+        - FavoritePlaylists_AddSelectedTracksPlaylist3
+        - FavoritePlaylists_AddSelectedTracksPlaylist4
+        - FavoritePlaylists_AddSelectedTracksPlaylist5
+        - FavoritePlaylists_AddSelectedTracksPlaylist6
+        - FavoritePlaylists_AddSelectedTracksPlaylist7
+        - FavoritePlaylists_AddSelectedTracksPlaylist8
+        - FavoritePlaylists_AddSelectedTracksPlaylist9
+        - FavoritePlaylists_AddSelectedTracksPlaylist10
+        - FavoritePlaylists_AddSelectedTracksPlaylist11
+        - FavoritePlaylists_AddSelectedTracksPlaylist12
+        - FavoritePlaylists_AddSelectedTracksPlaylist13
+        - FavoritePlaylists_AddSelectedTracksPlaylist14
+        - FavoritePlaylists_AddSelectedTracksPlaylist15
+        - FavoritePlaylists_AddSelectedTracksPlaylist16
+        - FavoritePlaylists_AddSelectedTracksPlaylist17
+        - FavoritePlaylists_AddSelectedTracksPlaylist18
+        - FavoritePlaylists_AddSelectedTracksPlaylist19
+        - FavoritePlaylists_AddSelectedTracksPlaylist20
         - Playlists_NewPlaylist
         - Playlists_NewSmartlist
         - Playlists_NewFolder
@@ -1687,125 +2301,217 @@ components:
         - Playlists_Duplicate
         - Playlists_EditSmartlist
         - Playlists_DuplicateAsPlaylist
+        - Playlists_Merge
+        - Playlists_Prefix
+        - Playlists_Capitalize
+        - Playlists_CrossReference
+        - Playlists_SortAZ
+        - Playlists_SortZA
+        - Playlists_SortTrackCount
+        - Playlists_Shuffle
+        - Playlists_RewriteOrder
         - Beatport_AddSelectedToCart
         - Beatport_RemoveSelectedFromCart
-        - Beatport_NextPage
-        - Beatport_PreviousPage
+        - Beatport_AddPlayingToCart
         - Beatport_TabsBeatportCatalog
-        - Beatport_TabsMyCart
-        - Beatport_TabsMyBeatport
-        - Beatport_TabsCharts
-        - Beatport_TabsHype
         - Beatport_TabsTop
-        - FindDuplicates_ToggleLock
-      description: >
+        - Beatport_TabsHype
+        - Beatport_TabsCharts
+        - Beatport_TabsMyBeatport
+        - Beatport_TabsMyCart
+        - Direct2Cdj_LoadDeck
+        - Direct2Cdj_LoadEmptyDeck
+        - Direct2Cdj_LoadDeck1
+        - Direct2Cdj_LoadDeck2
+        - Direct2Cdj_LoadDeck3
+        - Direct2Cdj_LoadDeck4
+        - Direct2Cdj_LoadDeck5
+        - Direct2Cdj_LoadDeck6
+        - Direct2Cdj_LoadDeck7
+        - Direct2Cdj_LoadDeck8
+        - AudioAnalyzer_Analyze
+        - PluginRunActionByName
+      description: |
         Most actions are self explanatory and have no parameters. To see all actions, expand the enum at the bottom.
-        
-        The follow actions have a parameter:
 
+        Actions ending in a number are shortcuts for the same action without the number, with that number as its parameter. `MusicPlayer_Hotcue1` is `MusicPlayer_Hotcue` with `index` 0, and `Application_SetRating3` is `Application_SetRating` with `amount` 3.
 
-        `Application_SetRating` - Set rating. Parameter `amount` from 0 to 5
+        The following actions have parameters:
 
+        - `MusicPlayer_Load` - Loads a track into the player. Parameter `id`, the track ID. Without it nothing happens
+        - `MusicPlayer_Seek` - Seek the current playing track to a progress (0 to 1) or seconds. Parameter `progress` or `seconds` as number
+        - `MusicPlayer_Hotcue` - Creates or jumps to a hot cue. Parameter `index` as integer, starting at 0
+        - `MusicPlayer_CreateHotcue`, `MusicPlayer_DeleteHotcue`, `MusicPlayer_MoveHotcue`, `MusicPlayer_ToggleMemoryCue` - Parameter `index` as integer, starting at 0
+        - `MusicPlayer_ApplyCueTemplate`, `MusicPlayer_AddAndApplyCueTemplate` - Apply cue template. Parameter `index` as integer, starting at 0
+        - `MusicPlayer_JumpBeats` - Jumps x beats. Parameter `beats` as positive or negative integer
+        - `MusicPlayer_JumpSeconds` - Jumps x seconds. Parameter `seconds` as positive or negative number
+        - `MusicPlayer_LoopCreate` - Turns the current cue into a loop. Parameter `beats`, the loop length in beats
+        - `Application_SetRating` - Set rating of the selected tracks. Parameter `amount` from 0 to 5
+        - `Application_SetEnergy`, `Application_SetDanceability`, `Application_SetPopularity`, `Application_SetHappiness` - Set that field of the selected tracks. Parameter `amount` from 0 to 10
+        - `Application_SetColor` - Set color of the selected tracks. Parameter `color`, see the Color enum for values, or `null` to remove the color
+        - `Application_Tags_AddShortcut` - Adds the Custom Tags assigned to tag shortcut `amount` to the selected tracks. Parameter `amount` as integer from 1 to 20
+        - `Application_Tags_ToggleShortcut` - Toggles the Custom Tags assigned to tag shortcut `amount` on the selected tracks. Parameter `amount` as integer from 1 to 20
+        - `TrackBrowser_FocusFilter` - Focus track browser filter. Parameter `field`, see the Track Fields enum for values
+        - `FavoritePlaylists_ShowPlaylist` - Shows the favorited playlist. Parameter `amount`, the favorite slot starting at 1
+        - `FavoritePlaylists_AddSelectedTracks` - Adds the selected tracks to the favorited playlist. Parameter `amount`, the favorite slot starting at 1
+        - `AudioAnalyzer_Analyze` - Analyzes tracks in the background, like the Analyze dialog does. Parameters:
+          - `trackIds` - array of track IDs, required. An empty array does nothing
+          - `analyzeKey`, `analyzeBeatgrid`, `analyzeWaveform`, `analyzeEnergy`, `doNotOverwrite` - booleans. One you leave out uses the setting from the Analyze dialog, and none of them are stored
+          - `tempoRange` - string `"<min>_<max>"`, such as `"88_175"`. Unlike the booleans this is stored as the Lexicon analysis setting, so it applies to later analysis too. The Analyze dialog offers `0_300` (any), `58_115`, `68_135`, `78_155`, `88_175`, `98_195`, `128_255` and `180_300`
+          `TrackBrowser_Analyze` opens the Analyze dialog instead
+        - `Direct2Cdj_LoadDeck` - Loads the one track selected in the track browser onto a player. Parameter `deckNumber`, the player number. Needs a connected Direct2CDJ player
+        - `Direct2Cdj_LoadEmptyDeck` - Loads the track in the Lexicon player onto the first Direct2CDJ player that is not playing
+        - `PluginRunActionByName` - Runs a plugin action. Parameters `pluginName` and `pluginActionName`
+        - `PluginRunAction_<pluginId>:<actionId>` - Runs a plugin action by ID. Both IDs are part of the action itself, for example `PluginRunAction_myplugin:myaction`, so it is not in the enum
 
-        `Application_SetColor` - Set color. Parameter `color`, see Color enum for values
-        
-        
-        `Application_SetEnergy` - Set energy. Parameter `amount` from 0 to 10
-        
-        
-        `Application_SetDanceability` - Set danceability. Parameter `amount` from 0 to 10
-        
-        
-        `Application_SetPopularity` - Set popularity. Parameter `amount` from 0 to 10
-        
-        
-        `Application_SetHappiness` - Set happiness. Parameter `amount` from 0 to 10
+        These actions have no parameters:
 
+        - `MusicPlayer_TempomarkerSet` - Move marker to the current position
+        - `MusicPlayer_TempomarkerFind` - Jump to next marker
+        - `MusicPlayer_TempomarkerAdd` - Add marker at current position
+        - `MusicPlayer_TempomarkerRemove` - Delete current marker
+        - `MusicPlayer_TempomarkerDoubleBpm` - Double current marker BPM
+        - `MusicPlayer_TempomarkerHalveBpm` - Halve current marker BPM
 
-        `Application_Tags_AddShortcut` - Adds the custom tags assigned to the shortcut number `amount`. Parameter `amount` as integer
+        `MusicPlayer_TempomarkerMoveGridLeft`, `MusicPlayer_TempomarkerMoveGridRight`, `MusicPlayer_TempomarkerIncreaseBpm` and `MusicPlayer_TempomarkerDecreaseBpm` only work as a hotkey. The API accepts them and does nothing.
 
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: What went wrong
+          example: "'limit' must be less than or equal to 1000, value: 5000"
+        errorCode:
+          type: integer
+          example: 5
+          description: |
+            Most errors come with HTTP status 400. Codes `6` and `9` come with 401 and code `8` with 500.
 
-        `Application_Tags_ToggleShortcut` - Toggles the custom tags assigned to the shortcut number `amount`. Parameter `amount` as integer
+            - `1` - The body is not valid JSON
+            - `2` - Too many requests that change the library are waiting their turn. Older versions of Lexicon also return it for any request sent while another is still running
+            - `4` - The endpoint does not exist, or not with this HTTP method
+            - `5` - Invalid input, the message says which parameter and why
+            - `6` - The app in `app` is not allowed to use the API, see the Lexicon settings
+            - `8` - Something went wrong inside Lexicon while handling the request. Please report it with the message
+            - `9` - The API token is missing or wrong, see Authentication at the top of this page. Starting in Lexicon v1.12
+            - `100` - Track does not exist
+            - `101` - Playlist does not exist
+            - `102` - Parent playlist is not a folder
+            - `103` - Parent playlist does not exist
+            - `104` - The playlist has the wrong type for this request, such as adding tracks to a folder
+            - `105` - Custom Tag category does not exist
+            - `106` - Another Custom Tag has this label
+            - `107` - Another Custom Tag category has this label
+            - `108` - Another Custom Tag in the category has this position
+            - `109` - Custom Tag does not exist
+            - `110` - Another track already has this location
+            - `111` - The file does not exist on disk
+            - `112` - The root playlist cannot be changed or deleted
+            - `113` - No track is selected in Lexicon, for an `id` of `selected`
 
-        
-        `MusicPlayer_DeleteHotcue` - Deletes a hot cue. Parameter `index` as integer
+    Track Sort:
+      type: object
+      required:
+        - field
+      properties:
+        field:
+          type: string
+          description: Field to sort on
+          enum:
+            - id
+            - title
+            - artist
+            - albumTitle
+            - label
+            - remixer
+            - mix
+            - composer
+            - producer
+            - grouping
+            - lyricist
+            - comment
+            - key
+            - genre
+            - bpm
+            - rating
+            - color
+            - year
+            - duration
+            - bitrate
+            - playCount
+            - location
+            - lastPlayed
+            - dateAdded
+            - dateModified
+            - sizeBytes
+            - sampleRate
+            - trackNumber
+            - energy
+            - danceability
+            - popularity
+            - happiness
+            - extra1
+            - extra2
+            - type
+            - importSource
+            - locationUnique
+            - incoming
+            - archived
+            - archivedSince
+            - beatshiftCase
+            - fingerprint
+            - streamingService
+            - streamingId
+          example: title
+        dir:
+          type: string
+          enum:
+            - asc
+            - desc
+          default: asc
 
-        
-        `MusicPlayer_CreateHotcue` - Creates a hot cue. Parameter `index` as integer
-
-        
-        `MusicPlayer_Hotcue` - Creates or jumps to a hot cue. Parameter `index` as integer
-
-        
-        `MusicPlayer_TempomarkerSet` - Move marker to the current position
-
-        
-        `MusicPlayer_TempomarkerFind` - Jump to next marker
-
-        
-        `MusicPlayer_TempomarkerAdd` - Add marker at current position
-
-        
-        `MusicPlayer_TempomarkerRemove` - Delete current marker
-
-        
-        `MusicPlayer_TempomarkerDoubleBpm` - Double current marker BPM
-
-        
-        `MusicPlayer_TempomarkerHalveBpm` - Halve current marker BPM
-
-        
-        `MusicPlayer_JumpBeats` - Jumps x beats. Parameter `beats` as positive or negative integer
-
-        
-        `MusicPlayer_ApplyCueTemplate` - Apply cue template. Parameter `index` as integer
-        
-
-        `MusicPlayer_Seek` - Seek the current playing track to a progress (0 to 1) or seconds. Parameter `progress` or `seconds` as number
-
-
-        `MusicPlayer_LoopCreate` - Turns the current cue into a loop of size `amount`. Has the `amount` parameter as integer
-
-
-        `TrackBrowser_FocusFilter` - Focus track browser filter. Parameter `field`, see Track Fields enum for available values
-
-
-        `FavoritePlaylists_ShowPlaylist` - Shows the favorited playlist. Parameter `amount` as integer
-
-
-        `FavoritePlaylists_AddSelectedTracks` - Adds selected tracks to the favorited playlist. Parameter `amount` as integer
+  responses:
+    Error:
+      description: >
+        Bad request. The body holds `message` and `errorCode`, see the Error schema for all codes.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   parameters:
     trackSource:
       in: query
       name: source
-      default: non-archived
       schema:
-        $ref: "#/components/schemas/Track Sources"
+        allOf:
+          - $ref: "#/components/schemas/Track Sources"
+        default: non-archived
     trackFields:
-      in: query  
+      in: query
       name: fields
-      default: []
-      example: ["artist", "title", "bpm"] 
+      example: ["artist", "title", "bpm"]
       description: >
-        Array of fields to include in the Track object. Defaults to all fields. More fields will take longer to query, try to limit queried fields to those you need.
+        Array of fields to include in the Track object. Defaults to all fields. More fields will take longer to query, try to limit queried fields to those you need. In a query string, repeat the parameter: `fields=artist&fields=title`.
       schema:
         type: array
+        default: []
         items:
           $ref: "#/components/schemas/Track Fields"
     trackSort:
-      in: query  
+      in: query
       name: sort
-      default: []
-      example: [
-        {
-          "field": "title",
-          "dir": "desc"
-        }
-      ] 
       description: >
-        Array of sort objects. With 0 sort objects, it will not do any sorting and use the database order. With 1 sort object, it will perform a normal sort. With 2 sorting objects, it will sort by the first object first and then sort by the second object. This works the same as holding the CTRL button when sorting in Lexicon.
-      schema:
-        type: array
-        items:
-          $ref: "#/components/schemas/Track Fields"
+        Array of sort objects. With 0 sort objects, it will not do any sorting and use the database order. With 1 sort object, it will perform a normal sort. With 2 sorting objects, it will sort by the first object first and then sort by the second object. This works the same as holding the CTRL button when sorting in Lexicon. `dir` defaults to `asc`.
+
+
+        In a JSON body, send it as an array. In a query string, send the array as JSON, `sort=[{"field":"title","dir":"asc"}]`, or in bracket form, `sort[0][field]=title&sort[0][dir]=asc`.
+      content:
+        application/json:
+          schema:
+            type: array
+            maxItems: 2
+            items:
+              $ref: "#/components/schemas/Track Sort"
+          example: [{ "field": "title", "dir": "desc" }]

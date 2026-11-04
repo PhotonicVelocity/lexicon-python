@@ -24,8 +24,6 @@ Tracks
 - `lex.tracks.update(id, edits)` -> `PATCH /v1/track` (returns: updated track dict from `data.track`)
 - `lex.tracks.delete(ids)` -> `DELETE /v1/tracks` (returns: no body)
 - `lex.tracks.analyze(ids, ...)` -> `POST /v1/control` with action `AudioAnalyzer_Analyze` (returns: no body)
-  - The spec's documented action name `TrackBrowser_AnalyzeStart` is rejected by the API; the internal id is sent
-    instead.
   - Analysis runs in the background with no completion signal; `tempo_range` takes one of the analyze dropdown's eight
     presets and persists as a Lexicon setting.
 

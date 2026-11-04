@@ -392,6 +392,7 @@ track = Track.from_api(lex.tracks.get(123))
 | Response caching (#6)                       | High   | Medium | Low      |
 | Dataclass/Pydantic models (#7)              | High   | Medium | Low      |
 | Control and queue resources (#13)           | Medium | Medium | Medium   |
+| Lexicon v1.12 support (#15)                 | Medium | Medium | Medium   |
 
 ---
 
@@ -528,3 +529,27 @@ placed exactly on a marker.
 - Add features as opt-in (e.g., `client_side_filters=True`, `model=Track`)
 - Keep SDK lightweight; optional dependencies recommended for advanced features
 - Document trade-offs (e.g., caching vs freshness, filtering vs performance)
+
+---
+
+### 15. Lexicon v1.12 Support
+
+**Problem**: The spec published 2026-11-01 describes v1.12, which has not been released, so none of this can be tested
+against 1.11.15 (see api-issues.md). Existing SDK calls stay valid against it, with one thing to check: the spec calls
+the `POST /control` response empty, and `lex.control()` and `tracks.analyze()` read a body of `{}` as success. If v1.12
+sends no body at all, `Lexicon.request()` returns `None` and both report failure.
+
+**Solution**: Once v1.12 ships:
+
+1. Accept an API token (`token=` argument, `LEXICON_TOKEN` variable) and send `Authorization: Bearer <token>`, including
+   from `_verify_connection()`. It is only needed when Require Authentication is on; without it the probe fails with
+   HTTP 401 and a message that blames a missing Lexicon.
+2. Add `tracks.selected()` (`GET /tracks/selected`), `playlists.selected()` (`GET /playlists/selected`), and
+   `tracks.update_location(id, location, check_file_exists=True)` (`PATCH /track/location`). The last replaces the
+   direct `main.db` edit music-tools needs today, because the API could not write `location`.
+3. Add `id` and `fileType` to `FilterField`, and page `tracks.search()` with `limit` and `offset` past 1000. `filter.id`
+   must stay out until then: 1.11.15 ignores it and returns the whole library.
+4. Use the track that `PATCH /track` now returns instead of re-fetching (item 8).
+
+**Implementation Location**: `src/lexicon/client.py`, `src/lexicon/resources/tracks.py`,
+`src/lexicon/resources/tracks_types.py`, `src/lexicon/resources/playlists.py`.
