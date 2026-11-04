@@ -26,8 +26,8 @@ from .tracks_types import (
 from ..tools.tempo import beats_to_seconds, seconds_to_beats
 from ._common_types import ValidationMode, _normalize_id_sequence
 
-# The OpenAPI spec documents this control action as "TrackBrowser_AnalyzeStart". Lexicon 1.11.13
-# rejects that name with HTTP 400 and accepts only the internal id the app maps it to.
+# Lexicon 1.11.13 rejects the name older specs gave this action, "TrackBrowser_AnalyzeStart", with
+# HTTP 400 and accepts only this internal id, which the spec has documented since 2026-11-01.
 ANALYZE_ACTION = "AudioAnalyzer_Analyze"
 
 
@@ -363,6 +363,12 @@ class Tracks(Resource):
                 if validation == "strict":
                     raise ValueError(f"Invalid filter values: {value_errors}")
                 self._logger.warning("Skipping invalid filter values: %s", value_errors)
+
+            # An empty filter matches the whole library, which is not what a caller
+            # who passed filters asked for.
+            if filter and not filter_payload:
+                self._logger.warning("Skipping search: no valid filters remain.")
+                return None
 
             filter_fields = cast(
                 list[TrackField], [field for field in filter_payload.keys()]
@@ -859,10 +865,6 @@ class Tracks(Resource):
         control handler accepts any ``"<min>_<max>"`` string and the analyzer
         clamps the stored bounds to 50..300 when it runs, but the dropdown shows
         no label for a value that is not a preset.
-
-        The request uses the internal action id ``ANALYZE_ACTION``
-        (``"AudioAnalyzer_Analyze"``) because Lexicon 1.11.13 rejects the action
-        name the OpenAPI spec documents.
         """
         parameters: dict[str, object]
         if validation == "off":

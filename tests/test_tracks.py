@@ -139,6 +139,31 @@ class TracksValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tracks = Tracks(DummyClient())  # type: ignore[arg-type]
 
+    def test_search_skips_request_when_no_filter_survives(self):
+        with patch.object(self.tracks, "_request") as request:
+            with self.assertLogs("lexicon.tests", level="WARNING") as ctx:
+                result = self.tracks.search({"dateAdded": ">=2024-01-01"})
+
+        self.assertIsNone(result)
+        request.assert_not_called()
+        self.assertTrue(any("no valid filters" in line for line in ctx.output))
+
+    def test_search_keeps_valid_filters_when_one_is_dropped(self):
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": []}}
+        ) as request:
+            self.tracks.search({"artist": "a", "dateAdded": ">=2024-01-01"})
+
+        self.assertEqual(request.call_args.kwargs["json"]["filter"], {"artist": "a"})
+
+    def test_search_with_empty_filter_still_runs(self):
+        with patch.object(
+            self.tracks, "_request", return_value={"data": {"tracks": []}}
+        ) as request:
+            self.assertEqual(self.tracks.search({}), [])
+
+        request.assert_called_once()
+
     def test_list_invalid_source_strict_raises(self):
         with patch.object(self.tracks, "_paged_tracks_json") as mocked_paged:
             with self.assertRaises(ValueError):
@@ -1308,13 +1333,38 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertIsNone(invalid_fields)
         self.assertTrue(any(err.startswith("bpm:") for err in value_errors or []))
 
-    def test_normalize_filters_date_operator_error(self):
+    def test_normalize_filters_date_operators(self):
         payload, invalid_fields, value_errors = _normalize_filters(
-            {"dateAdded": ">2024-01-01"}
+            {"dateAdded": ">2024-01-01", "lastPlayed": "<2024-02-01"}
         )
-        self.assertEqual(payload, {})
+        self.assertEqual(
+            payload, {"dateAdded": ">2024-01-01", "lastPlayed": "<2024-02-01"}
+        )
         self.assertIsNone(invalid_fields)
-        self.assertTrue(any(err.startswith("dateAdded:") for err in value_errors or []))
+        self.assertIsNone(value_errors)
+
+    def test_normalize_filters_refuses_date_operators_with_equals(self):
+        # Lexicon accepts "<=" and still leaves that day out.
+        for value in (">=2024-01-01", "<=2024-01-01"):
+            payload, _, value_errors = _normalize_filters({"dateAdded": value})
+            self.assertEqual(payload, {})
+            self.assertTrue(
+                any(err.startswith("dateAdded:") for err in value_errors or [])
+            )
+
+    def test_normalize_filters_size_bytes(self):
+        payload, invalid_fields, value_errors = _normalize_filters(
+            {"sizeBytes": ">100"}
+        )
+        self.assertEqual(payload, {"sizeBytes": ">100"})
+        self.assertIsNone(invalid_fields)
+        self.assertIsNone(value_errors)
+
+    def test_normalize_filters_rejects_import_source(self):
+        # Lexicon 1.11.15 ignores this filter and returns every track.
+        payload, invalid_fields, _ = _normalize_filters({"importSource": "1"})  # type: ignore[arg-type]
+        self.assertEqual(payload, {})
+        self.assertIn("importSource", invalid_fields or [])
 
     def test_normalize_filters_tags_error(self):
         payload, invalid_fields, value_errors = _normalize_filters({"tags": None})
@@ -1498,6 +1548,7 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertEqual(_normalize_number(None, context="filter"), "0")
         self.assertEqual(_normalize_number("none", context="filter"), "0")
         self.assertEqual(_normalize_number("1 - 2", context="filter"), "1-2")
+        self.assertEqual(_normalize_number("1 ~ 2", context="filter"), "1~2")
         self.assertEqual(_normalize_number("<=2", context="filter"), "<=2")
         self.assertEqual(_normalize_number("+1.5", context="edit"), "+1.5")
         with self.assertRaises(ValueError):
@@ -1526,8 +1577,14 @@ class TracksTypesValidationTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             _normalize_date("01-01-2024", context="filter")
+        self.assertEqual(
+            _normalize_date(">2024-01-01", context="filter"), ">2024-01-01"
+        )
+        self.assertEqual(
+            _normalize_date("<2024-01-01", context="filter"), "<2024-01-01"
+        )
         with self.assertRaises(ValueError):
-            _normalize_date(">2024-01-01", context="filter")
+            _normalize_date(">=2024-01-01", context="filter")
         with self.assertRaises(ValueError):
             _normalize_date("01-01-2024", context="edit")
         with self.assertRaises(ValueError):

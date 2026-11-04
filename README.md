@@ -212,9 +212,12 @@ lex.tracks.search({"artist": "Daft Punk"})
 lex.tracks.search({"bpm": "120"})
 lex.tracks.search({"bpm": "120-128"})
 lex.tracks.search({"bpm": ">=120"})
+lex.tracks.search({"bpm": "120~128"})  # stops before 128
 
 # date filters (YYYY-MM-DD)
+# - ">" is that day and later, "<" is before that day
 lex.tracks.search({"dateAdded": "2024-01-01"})
+lex.tracks.search({"dateAdded": ">2024-01-01"})
 
 # tag filters (comma-separated names)
 # - default: OR across tags

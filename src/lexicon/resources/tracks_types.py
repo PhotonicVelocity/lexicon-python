@@ -183,7 +183,6 @@ FilterField = Literal[
     "genre",
     "color",
     "location",
-    "importSource",
     "extra1",
     "extra2",
     "bpm",
@@ -192,6 +191,7 @@ FilterField = Literal[
     "duration",
     "bitrate",
     "playCount",
+    "sizeBytes",
     "sampleRate",
     "trackNumber",
     "energy",
@@ -529,8 +529,9 @@ def _normalize_number(
     if isinstance(value, str):
         if context == "filter":
             none_match = re.match(r"^\s*none\s*$", value, flags=re.IGNORECASE)
+            # "1-2" includes 2; "1~2" stops before 2.
             range_match = re.match(
-                r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$", value
+                r"^\s*(\d+(?:\.\d+)?)\s*([-~])\s*(\d+(?:\.\d+)?)\s*$", value
             )
             compare_match = re.match(r"^\s*(?:[<>!]|<=|>=)?\s*\d+(?:\.\d+)?\s*$", value)
             if not any([none_match, range_match, compare_match]):
@@ -541,7 +542,7 @@ def _normalize_number(
             if none_match:
                 value = "0"
             if range_match:
-                value = f"{range_match.group(1)}-{range_match.group(2)}"
+                value = "".join(range_match.groups())
             return value
         elif context == "edit":
             if re.match(r"^\s*[+-]?\d+(?:\.\d+)?\s*$", value):
@@ -575,17 +576,20 @@ def _normalize_date(
         if value.lower().strip() == "none":
             return "NONE" if context == "filter" else None
         if context == "filter":
-            date_match = re.match(r"^(?P<op>[<>]=?)?\s*(\d{4}-\d{2}-\d{2})", value)
+            # Lexicon reads ">" as that day and later and "<" as before that day. It accepts
+            # ">=" and "<=" too, but "<=" still leaves that day out, so both are refused.
+            if re.match(r"^\s*[<>]=", value):
+                raise ValueError(
+                    "Date filters take '>' (that day and later) or '<' (before that day). "
+                    f"Given [{value!r}]"
+                )
+            date_match = re.match(r"^(?P<op>[<>])?\s*(\d{4}-\d{2}-\d{2})", value)
             if not date_match:
                 raise ValueError(
                     f"Input must be in YYYY-MM-DD format. Given [{value!r}]"
                 )
-            if date_match.group("op"):
-                raise ValueError(
-                    "Comparison operators on date filters are not supported by the API"
-                )
             date_iso = cast(str, date_match.group(2))
-            return date_iso
+            return f"{date_match.group('op') or ''}{date_iso}"
         elif context == "edit":
             date_match = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
             if not date_match:
