@@ -8,7 +8,7 @@ API.
 
 ## Features
 
-- Resource grouped client (`lex.tracks`, `lex.playlists`, `lex.tags`)
+- Resource grouped client (`lex.tracks`, `lex.playlists`, `lex.tags`, `lex.player`)
 - Pagination handled for `tracks.list()` (API returns 1000 per page)
 - Validation modes for inputs: warn (default), strict, or off
 - Typed responses and payload hints (TypedDicts and Literals)
@@ -283,6 +283,17 @@ lex.tags.categories.update(new_cat["id"], label="Renamed Category")
 lex.tags.categories.delete(new_cat["id"])
 ```
 
+## Player
+
+```python
+playing = lex.player.playing()  # None when no track is loaded
+if playing:
+    print(playing["track"]["title"], playing["currentTime"], playing["progress"])
+```
+
+`playing()` returns the loaded track whether it is playing or paused. For Beatport, Apple Music, and Spotify tracks,
+`track` is not a library row: `id` is the service's own track ID, and `duration` is the length of the preview clip.
+
 ## Tools
 
 Interactive playlist chooser (requires InquirerPy):
@@ -328,6 +339,7 @@ High level namespaces (full mapping in `docs/resource-map.md`):
 - `lex.playlists.tracks`: list (IDs), get (track dicts), add, remove, update
 - `lex.tags`: list, add, update, delete
 - `lex.tags.categories`: list, add, update, delete
+- `lex.player`: playing
 
 ## Type Hints
 

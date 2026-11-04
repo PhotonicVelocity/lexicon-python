@@ -106,6 +106,38 @@
 - Storage, for reference: `Waveform(trackId, data BLOB, previewCues TEXT, iteration INTEGER)` in `main.db`, one row per
   track, `ON DELETE CASCADE` from `Track`.
 
+### Added 2026-11-04 (Lexicon 1.11.15)
+
+- `GET /v1/playing` after an eject returns `{"data":{"track":null,"progress":0,"currentTime":0.976}}`, where the spec
+  says the endpoint returns `null` (live-tested). `currentTime` keeps the position from before the eject, so check
+  `track` rather than `currentTime`. The handler falls back to `null` for `progress` and `currentTime` when the player
+  object does not exist; not live-tested.
+- `GET /v1/playing` returns the loaded track while paused, despite the spec's "currently playing". `currentTime` held at
+  19.81 across two reads (live-tested). The response has no play state field.
+- `data.track` is not always the spec's `Track`. The handler returns `musicPlayer.track ?? musicPlayer.remoteTrack`. A
+  library track has the same fields as `GET /v1/track` plus `releaseDate` (live-tested). A Beatport track gives this
+  shape (live-tested):
+  `{"headers":null,"url":"https://geo-samples.beatport.com/track/<uuid>.LOFI.mp3","streamingService":"0","title":...,"artist":"Chase & Status, Skrillex","id":30520465,"imageUrl":...,"bpm":88,"duration":57.27,"key":"12M"}`
+  - `id` is Beatport's track ID, not a library ID, and `GET /v1/track` with it returns `TrackNotExist`. Beatport's API
+    returned the same title, artists, BPM, and `sample_url` for that ID.
+  - `duration` is the preview length: `sample_end_ms` minus `sample_start_ms`, 57.27 s on a 166.27 s track.
+  - `title` has no mix name. `type` and `streamingId` are absent.
+  - `key` depends on where the track was loaded from. Loaded from a library row, it carries the row's key; loaded from
+    the Beatport tab, the field is absent, because the tab's builder never sets it (live-tested on Beatport ID 30274307:
+    `"12M"` from the row, absent from the tab). `imageUrl` differs the same way, 1400x1400 from the row and 500x500 from
+    the tab.
+  - A Beatport library row is swapped for a remote track at load, so the response loses the library ID (live-tested: row
+    21130, `id` 30274307). The row has `type` `"1"`, `streamingId` `"30274307"`, `mix` `"Original Mix"`, `location`
+    `beatport:/tracks/30274307`, and the full `duration` 237.241. The player still reports the 120 s preview, at the
+    same `url` as the Beatport tab.
+  - Per the app bundle, not live-tested: Apple Music and Spotify rows are swapped the same way. SoundCloud rows stay a
+    `Track`, with the library ID in `id`. Beatsource, Tidal, Deezer, and iTunes rows are refused at load with a "not yet
+    supported" alert. `id` takes the service's type: an int for Beatport, a string for Spotify.
+- A file loaded from outside the library is held as an `ExternalTrack`, which sets neither `track` nor `remoteTrack`, so
+  `data.track` is `null` while it plays. Read from the app bundle; not live-tested.
+- The spec's `streamingService` enum stops at `3`. The app defines `0` Beatport LINK, `1` Beatsource LINK, `2`
+  SoundCloud, `3` Tidal, `4` Spotify, `5` Deezer, `6` Apple Music, `7` iTunes.
+
 ## Undocumented Fields in API Responses
 
 - `GET /v1/track`

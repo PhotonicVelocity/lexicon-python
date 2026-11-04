@@ -2,6 +2,7 @@
 
 from .client import DEFAULT_HOST, LEXICON_PORT, Lexicon, LexiconConnectionError
 from .colors import Color, color_rgb
+from .resources.player_types import PlayingResponse, RemoteTrackResponse
 from .resources.playlists_types import PlaylistResponse
 from .resources.tag_categories_types import TagCategoryResponse
 from .resources.tags_types import TagResponse
@@ -23,6 +24,8 @@ __all__ = [
     "Lexicon",
     "LexiconConnectionError",
     "TrackResponse",
+    "PlayingResponse",
+    "RemoteTrackResponse",
     "PlaylistResponse",
     "TagResponse",
     "TagCategoryResponse",

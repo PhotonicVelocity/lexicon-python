@@ -65,6 +65,14 @@ Tag categories (nested under tags)
 - `lex.tags.categories.update(id, label, color, tags)` -> `PATCH /v1/tag-category` (returns: category dict from `data`)
 - `lex.tags.categories.delete(id)` -> `DELETE /v1/tag-category` (returns: no body)
 
+Player
+
+- `lex.player.playing()` -> `GET /v1/playing` (returns: dict with `track`, `progress`, `currentTime` from `data`, or
+  `None` when `data.track` is null)
+  - Returns the loaded track whether playing or paused. The API has no play state field.
+  - For Beatport, Apple Music, and Spotify, `track` is a remote track rather than a library row: `id` is the service's
+    own ID and `duration` is the preview length. See api-issues.md.
+
 ## Verb Sets (Locked)
 
 - tracks: get, get_many, list, search, add, update, delete, analyze
@@ -72,6 +80,7 @@ Tag categories (nested under tags)
 - playlists.tracks: get, list, add, remove, update
 - tags: list, add, update, delete
 - tags.categories: list, add, update, delete
+- player: playing
 
 ## Escape Hatch
 
@@ -95,4 +104,5 @@ Proposed module layout for the namespace:
 - `lex.playlists.tracks` -> `src/lexicon/resources/playlist_tracks.py`
 - `lex.tags` -> `src/lexicon/resources/tags.py`
 - `lex.tags.categories` -> `src/lexicon/resources/tag_categories.py`
+- `lex.player` -> `src/lexicon/resources/player.py`
 - `lex.tools.playlists` -> `src/lexicon/tools/playlists.py`

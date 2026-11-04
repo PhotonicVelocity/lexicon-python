@@ -391,7 +391,7 @@ track = Track.from_api(lex.tracks.get(123))
 | Smartlist builder (#5)                      | High   | High   | Medium   |
 | Response caching (#6)                       | High   | Medium | Low      |
 | Dataclass/Pydantic models (#7)              | High   | Medium | Low      |
-| Control, playing, queue resources (#13)     | Medium | Medium | Medium   |
+| Control and queue resources (#13)           | Medium | Medium | Medium   |
 
 ---
 
@@ -478,19 +478,18 @@ music-tools' `add_lexicon` CLI picker). Also a small polish win for `help(lex.to
 
 ---
 
-### 13. Control, Playing, and Queue Resources
+### 13. Control and Queue Resources
 
 **Problem**: The spec has carried `POST /control`, `GET /playing`, and `GET /queue` since at least Lexicon 1.10 (April
-2026), and the SDK wraps none of them. `GET /playing` is used only as the connection probe in
-`Lexicon._verify_connection()`. `tracks.analyze()` (added 2026-09-02) sends one hard-coded control action and is the
-only caller of `/control`.
+2026). `lex.player.playing()` wraps `GET /playing` as of 2026-11-04; `POST /control` and `GET /queue` are still
+unwrapped. `tracks.analyze()` (added 2026-09-02) sends one hard-coded control action and is the only caller of
+`/control`.
 
 **Solution**: A `lex.control(action, **parameters)` method with a `Literal` of the spec's action names, plus
-`lex.player.playing()` returning `{"track", "progress", "currentTime"}` (the live shape; the spec says `seconds`, see
-api-issues.md) and `lex.player.queue()` returning the track list. The plugin run actions (`PluginRunActionByName`, see
-api-issues.md) stay out of scope until plugins are wanted.
+`lex.player.queue()` returning the track list. The plugin run actions (`PluginRunActionByName`, see api-issues.md) stay
+out of scope until plugins are wanted.
 
-**Implementation Location**: `src/lexicon/client.py` (`control`), `src/lexicon/resources/player.py` (new),
+**Implementation Location**: `src/lexicon/client.py` (`control`), `src/lexicon/resources/player.py`,
 `docs/resource-map.md` verb sets.
 
 ---

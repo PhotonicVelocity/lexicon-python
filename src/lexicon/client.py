@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 import requests
 
+from .resources.player import Player
 from .resources.playlist_tracks import PlaylistTracks
 from .resources.playlists import Playlists
 from .resources.tag_categories import TagCategories
@@ -37,6 +38,7 @@ class Lexicon:
     tracks: Tracks
     playlists: Playlists
     tags: Tags
+    player: Player
     tools: Tools
 
     def __init__(
@@ -87,6 +89,7 @@ class Lexicon:
         )
         self.tags: Tags = Tags(self)
         self.tags.categories = TagCategories(self)
+        self.player: Player = Player(self, tracks=self.tracks)
         self.tools = Tools()
 
         if verify_connection:
