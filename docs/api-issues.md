@@ -86,6 +86,26 @@
   `MusicPlayer_TempomarkerMoveGridLeft`, `MusicPlayer_TempomarkerMoveGridRight`, `MusicPlayer_TempomarkerIncreaseBpm`,
   `MusicPlayer_TempomarkerDecreaseBpm`. Lexicon logs `disabled control action` and returns 200.
 
+### Added 2026-09-08 (Lexicon 1.11.14)
+
+- `POST /v1/control` with `AudioAnalyzer_Analyze` and `analyzeWaveform: true` never replaces an existing waveform. In
+  the app's analyzer, `doNotOverwrite` gates key, beatgrid, energy, and cuepoints only. The waveform step runs when the
+  track's row in the `Waveform` table is missing, has `data` NULL, was saved under an older `waveformIteration` setting,
+  or holds a truncated WebP; otherwise it is skipped. Live-tested with
+  `{"trackIds":[20240],"analyzeWaveform":true,"analyzeKey":false,"analyzeBeatgrid":false,"analyzeEnergy":false,"doNotOverwrite":false}`:
+  the response is `{}`, the app shows "Nothing to analyze: all 1 track were skipped", and the stored WebP is
+  byte-identical afterwards. The Analyze dialog uses the same code path. Consequence: after an audio file is replaced in
+  place, the stored waveform stays stale and the API cannot refresh it.
+- `waveform` is a virtual, non-editable track field. `PATCH /v1/track` with `edits: {"waveform": null}` returns
+  `{"message":"'waveform' is not editable, value: null","errorCode":5}` (live-tested).
+- Within the app, the only way to discard a waveform is the Cleanup dialog (Help menu, "Cleanup"; hotkey action
+  `Application_OpenCleanupDialog`, absent from the spec's Control Actions enum). Cleanup type "Waveforms" deletes the
+  `Waveform` rows of the tracks selected in the track browser and reloads them without a restart; with no selection it
+  deletes every waveform and restarts Lexicon. The next Analyze run with Waveform enabled, or loading the track in the
+  player, regenerates the row. Confirmed in the UI on 1.11.14; the dialog was not driven over the API.
+- Storage, for reference: `Waveform(trackId, data BLOB, previewCues TEXT, iteration INTEGER)` in `main.db`, one row per
+  track, `ON DELETE CASCADE` from `Track`.
+
 ## Undocumented Fields in API Responses
 
 - `GET /v1/track`
