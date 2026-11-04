@@ -9,6 +9,7 @@ API.
 ## Features
 
 - Resource grouped client (`lex.tracks`, `lex.playlists`, `lex.tags`, `lex.player`)
+- Player and hotkey commands via `lex.player` and `lex.control()`
 - Pagination handled for `tracks.list()` (API returns 1000 per page)
 - Validation modes for inputs: warn (default), strict, or off
 - Typed responses and payload hints (TypedDicts and Literals)
@@ -292,10 +293,26 @@ lex.tags.categories.delete(new_cat["id"])
 playing = lex.player.playing()  # None when no track is loaded
 if playing:
     print(playing["track"]["title"], playing["currentTime"], playing["progress"])
+
+queue = lex.player.queue()  # the tracks after the loaded one
 ```
 
 `playing()` returns the loaded track whether it is playing or paused. For Beatport, Apple Music, and Spotify tracks,
 `track` is not a library row: `id` is the service's own track ID, and `duration` is the length of the preview clip.
+
+## Control
+
+`lex.control()` runs the commands that can be bound to a hotkey. Parameters use their API names.
+
+```python
+lex.control("MusicPlayer_TogglePlay")
+lex.control("MusicPlayer_Load", id=123)
+lex.control("MusicPlayer_Seek", seconds=30)
+```
+
+It returns `True` when Lexicon accepts the request. Lexicon does not wait for the action to finish and has no completion
+signal, and it accepts an action whose target is missing, such as one for the selected tracks with nothing selected.
+Names are checked against the `ControlAction` list; pass `validation="off"` for one that is not listed.
 
 ## Tools
 
@@ -342,7 +359,8 @@ High level namespaces (full mapping in `docs/resource-map.md`):
 - `lex.playlists.tracks`: list (IDs), get (track dicts), add, remove, update
 - `lex.tags`: list, add, update, delete
 - `lex.tags.categories`: list, add, update, delete
-- `lex.player`: playing
+- `lex.player`: playing, queue
+- `lex.control()`: run a control action
 
 ## Type Hints
 

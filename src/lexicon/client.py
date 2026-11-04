@@ -8,6 +8,8 @@ from typing import Any, Optional
 
 import requests
 
+from .resources._common_types import ValidationMode
+from .resources.control_types import CONTROL_ACTIONS, ControlAction
 from .resources.player import Player
 from .resources.playlist_tracks import PlaylistTracks
 from .resources.playlists import Playlists
@@ -118,6 +120,62 @@ class Lexicon:
                 "Is Lexicon running with the Local API enabled?"
             ) from exc
         self._logger.info("Connected to Lexicon at %s:%s", self.host, self.port)
+
+    def control(
+        self,
+        action: ControlAction,
+        /,
+        *,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+        **parameters: Any,
+    ) -> bool:
+        """Run a Lexicon command, the same ones that can be bound to a hotkey.
+
+        Parameters
+        ----------
+        action
+            Action name, such as ``"MusicPlayer_Eject"``.
+        validation
+            Validation mode: ``"off"`` sends any action name, ``"warn"`` logs a
+            name missing from ``ControlAction`` and sends nothing, and ``"strict"``
+            raises on one. Use ``"off"`` for
+            ``PluginRunAction_<pluginId>:<actionId>``, which is not in the list.
+        timeout
+            Timeout in seconds for this request.
+        **parameters
+            The action's parameters under their API names, such as
+            ``lex.control("MusicPlayer_Load", id=123)``. See the Control Actions
+            schema in ``docs/lexicon-api-docs.yaml``.
+
+        Returns
+        -------
+        bool
+            True if Lexicon accepted the request, otherwise False.
+
+        Notes
+        -----
+        True does not mean the action did anything. Lexicon returns before the
+        action finishes, has no completion signal, and accepts an action whose
+        target is missing, such as a hotkey for the selected tracks with nothing
+        selected, or ``MusicPlayer_Load`` without ``id``.
+
+        ``ControlAction`` follows the newest spec, so it can name actions that the
+        running Lexicon rejects. See ``docs/api-issues.md``.
+        """
+        if validation != "off" and action not in CONTROL_ACTIONS:
+            if validation == "strict":
+                raise ValueError(f"Invalid action for control: {action}")
+            self._logger.warning("Invalid action for control: %s", action)
+            return False
+
+        payload: dict[str, Any] = {"action": action}
+        if parameters:
+            payload["parameters"] = parameters
+        response = self.request("POST", "/control", json=payload, timeout=timeout)
+        # Lexicon 1.11.15 answers HTTP 200 with only a "message" when a handler throws
+        # an error that has no code. See docs/api-issues.md.
+        return isinstance(response, dict) and "message" not in response
 
     def request(
         self,

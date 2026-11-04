@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Optional, cast
 
 from .base import Resource
-from .player_types import PlayingResponse
+from .player_types import PlayingResponse, RemoteTrackResponse
 from .tracks import Tracks
+from .tracks_types import TrackResponse
 
 
 class Player(Resource):
@@ -61,3 +62,39 @@ class Player(Resource):
         return cast(
             PlayingResponse, {**data, "track": self._tracks._parse_enums(track)}
         )
+
+    def queue(
+        self, *, timeout: Optional[int] = None
+    ) -> list[TrackResponse | RemoteTrackResponse] | None:
+        """Fetch the queue, not including the track in the player.
+
+        With no queue built by hand, Lexicon fills it with the tracks after the
+        one that started, so this can hold up to 1000 tracks. Tracks from a
+        streaming tab are remote tracks, as in :meth:`playing`.
+
+        Parameters
+        ----------
+        timeout
+            Timeout in seconds for this request.
+
+        Returns
+        -------
+        list | None
+            Track dicts in play order, or None on error.
+        """
+        response = self._get("/queue", timeout=timeout)
+        if not isinstance(response, dict):
+            return None
+
+        data = response.get("data")
+        tracks = data.get("tracks") if isinstance(data, dict) else None
+        if isinstance(tracks, list):
+            return cast(
+                list[TrackResponse | RemoteTrackResponse],
+                [
+                    self._tracks._parse_enums(t) if isinstance(t, dict) else t
+                    for t in tracks
+                ],
+            )
+        self._logger.warning("Queue response missing expected tracks list.")
+        return None

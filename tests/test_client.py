@@ -13,6 +13,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from lexicon.client import Lexicon, LexiconConnectionError  # noqa: E402
+from lexicon.resources.control_types import CONTROL_ACTIONS  # noqa: E402
+from lexicon.resources.tracks import ANALYZE_ACTION  # noqa: E402
 
 
 logging.basicConfig(
@@ -50,6 +52,97 @@ class FakeSession:
     def request(self, method, url, params=None, json=None, timeout=None):
         self.calls.append((method, url, params, json, timeout))
         return self.response
+
+
+def make_client(response: FakeResponse) -> tuple[Lexicon, FakeSession]:
+    session = FakeSession(response)
+    client = Lexicon(
+        host="example.com", port=1234, session=session, verify_connection=False
+    )
+    return client, session
+
+
+class ControlTests(unittest.TestCase):
+    def test_sends_action_without_parameters(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        self.assertTrue(client.control("MusicPlayer_Eject"))
+
+        method, url, _, payload, _ = session.calls[0]
+        self.assertEqual(method, "POST")
+        self.assertEqual(url, "http://example.com:1234/v1/control")
+        self.assertEqual(payload, {"action": "MusicPlayer_Eject"})
+
+    def test_sends_parameters_under_their_api_names(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        self.assertTrue(client.control("MusicPlayer_Load", id=123))
+
+        self.assertEqual(
+            session.calls[0][3],
+            {"action": "MusicPlayer_Load", "parameters": {"id": 123}},
+        )
+
+    def test_keeps_a_null_parameter(self):
+        # Application_SetColor uses a null color to remove the color.
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        client.control("Application_SetColor", color=None)
+
+        self.assertEqual(session.calls[0][3]["parameters"], {"color": None})
+
+    def test_timeout_is_not_sent_as_a_parameter(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        client.control("MusicPlayer_Eject", timeout=3)
+
+        _, _, _, payload, timeout = session.calls[0]
+        self.assertEqual(payload, {"action": "MusicPlayer_Eject"})
+        self.assertEqual(timeout, 3)
+
+    def test_rejected_action_returns_false(self):
+        error = requests.HTTPError("400 Client Error")
+        client, _ = make_client(
+            FakeResponse(json_payload={"errorCode": 5}, status_error=error)
+        )
+
+        with self.assertLogs("lexicon.client", level="WARNING"):
+            self.assertFalse(client.control("MusicPlayer_Eject"))
+
+    def test_error_message_in_a_200_response_returns_false(self):
+        # Lexicon 1.11.15 reports a handler error with no code this way.
+        body = {"message": "h[r].trim is not a function"}
+        client, _ = make_client(FakeResponse(json_payload=body))
+
+        self.assertFalse(client.control("MusicPlayer_Eject"))
+
+    def test_unknown_action_is_not_sent_in_warn_mode(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        with self.assertLogs("lexicon.client", level="WARNING"):
+            self.assertFalse(client.control("Not_An_Action"))  # type: ignore[arg-type]
+
+        self.assertEqual(session.calls, [])
+
+    def test_unknown_action_raises_in_strict_mode(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+
+        with self.assertRaises(ValueError):
+            client.control("Not_An_Action", validation="strict")  # type: ignore[arg-type]
+
+        self.assertEqual(session.calls, [])
+
+    def test_validation_off_sends_a_plugin_action(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+        action = "PluginRunAction_myplugin:myaction"
+
+        self.assertTrue(client.control(action, validation="off"))  # type: ignore[arg-type]
+
+        self.assertEqual(session.calls[0][3], {"action": action})
+
+    def test_action_list_includes_analyze_action(self):
+        # tracks.analyze() posts this action directly, so the name has to stay valid.
+        self.assertIn(ANALYZE_ACTION, CONTROL_ACTIONS)
 
 
 class ClientTests(unittest.TestCase):

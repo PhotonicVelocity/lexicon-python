@@ -131,6 +131,41 @@ class PlayerPlayingTests(unittest.TestCase):
 
         self.assertEqual(client.request_calls, [("GET", "/playing", None, None, 3)])
 
+    def test_queue_returns_tracks(self):
+        tracks = [LIBRARY_PLAYING["data"]["track"], BEATPORT_PLAYING["data"]["track"]]
+        with patch.object(
+            self.player, "_get", return_value={"data": {"tracks": tracks}}
+        ):
+            self.assertEqual(self.player.queue(), tracks)
+
+    def test_queue_empty_returns_empty_list(self):
+        with patch.object(self.player, "_get", return_value={"data": {"tracks": []}}):
+            self.assertEqual(self.player.queue(), [])
+
+    def test_queue_failed_request_returns_none(self):
+        with patch.object(self.player, "_get", return_value=None):
+            self.assertIsNone(self.player.queue())
+
+    def test_queue_malformed_response_warns_and_returns_none(self):
+        with patch.object(self.player, "_get", return_value={"data": {}}):
+            with self.assertLogs("lexicon.tests", level="WARNING"):
+                self.assertIsNone(self.player.queue())
+
+    def test_queue_raw_enums_disabled_converts_library_cuepoints(self):
+        player = make_player(raw_enums=False)
+        tracks = [LIBRARY_PLAYING["data"]["track"]]
+        with patch.object(player, "_get", return_value={"data": {"tracks": tracks}}):
+            queue = player.queue()
+
+        assert queue is not None
+        self.assertEqual(queue[0]["cuepoints"][0]["type"], "normal")
+
+    def test_queue_timeout_is_passed_to_the_request(self):
+        client = DummyClient()
+        Player(client, tracks=Tracks(client)).queue(timeout=3)  # type: ignore[arg-type]
+
+        self.assertEqual(client.request_calls, [("GET", "/queue", None, None, 3)])
+
     def test_client_exposes_player(self):
         self.assertIsInstance(Lexicon(verify_connection=False).player, Player)
 

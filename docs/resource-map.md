@@ -70,6 +70,14 @@ Player
   - Returns the loaded track whether playing or paused. The API has no play state field.
   - For Beatport, Apple Music, and Spotify, `track` is a remote track rather than a library row: `id` is the service's
     own ID and `duration` is the preview length. See api-issues.md.
+- `lex.player.queue()` -> `GET /v1/queue` (returns: track list from `data.tracks`; does not include the track in the
+  player)
+
+Control
+
+- `lex.control(action, **parameters)` -> `POST /v1/control` (returns: bool; no body)
+  - `True` means Lexicon accepted the request. It does not wait for the action and accepts one whose target is missing.
+  - Action names follow the newest spec, so some are rejected by older Lexicon versions. See api-issues.md.
 
 ## Verb Sets (Locked)
 
@@ -78,7 +86,7 @@ Player
 - playlists.tracks: get, list, add, remove, update
 - tags: list, add, update, delete
 - tags.categories: list, add, update, delete
-- player: playing
+- player: playing, queue
 
 ## Escape Hatch
 
@@ -96,7 +104,7 @@ Playlists
 
 Proposed module layout for the namespace:
 
-- `lex` -> `src/lexicon/client.py` (client + `request(...)`)
+- `lex` -> `src/lexicon/client.py` (client + `request(...)` + `control(...)`)
 - `lex.tracks` -> `src/lexicon/resources/tracks.py`
 - `lex.playlists` -> `src/lexicon/resources/playlists.py`
 - `lex.playlists.tracks` -> `src/lexicon/resources/playlist_tracks.py`

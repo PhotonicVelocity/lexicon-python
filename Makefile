@@ -1,4 +1,4 @@
-.PHONY: help test lint format type-check check all clean update-docs update-models update-api-reference update-all convert-test-docs
+.PHONY: help test lint format type-check check all clean update-control-actions update-docs update-models update-api-reference update-all convert-test-docs
 
 # When uv is on PATH, run tools via the project environment; otherwise use pytest/ruff from PATH (e.g. activated venv).
 UV_RUN := $(if $(shell command -v uv 2>/dev/null),uv run,)
@@ -13,6 +13,7 @@ help:
 	@echo "  make check       - Run all checks (lint, format, type-check, test)"
 	@echo "  make all         - Same as 'make check'"
 	@echo "  make clean       - Clean cache files"
+	@echo "  make update-control-actions - Regenerate ControlAction from the vendored spec"
 
 # Run tests with coverage
 run-tests:
@@ -44,6 +45,10 @@ format-fix:
 
 # Run all checks
 test: format-fix lint-fix format-check lint-check run-tests
+
+# Regenerate the ControlAction list after refreshing docs/lexicon-api-docs.yaml
+update-control-actions:
+	uv run --with pyyaml python scripts/update_control_actions.py
 
 # Run all fixers
 fix: lint-fix format-fix
