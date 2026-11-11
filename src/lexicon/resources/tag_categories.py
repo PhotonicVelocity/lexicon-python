@@ -118,7 +118,8 @@ class TagCategories(Resource):
         *,
         label: Optional[str] = None,
         color: Optional[str] = None,
-        # tags: Optional[Sequence[int]] = None,  # API accepts but doesn't persist — see api-issues.md
+        tags: Optional[Sequence[int]] = None,
+        position: Optional[int] = None,
         validation: ValidationMode = "warn",
         timeout: Optional[int] = None,
     ) -> TagCategoryResponse | None:
@@ -129,9 +130,19 @@ class TagCategories(Resource):
         category_id
             Category identifier.
         label
-            New category label.
+            New category label. Lexicon refuses a label another category has,
+            ignoring case (error code 107).
         color
             New category color.
+        tags
+            Every tag of the category, as tag IDs in the order to show them. Tags
+            from other categories move into this one. Lexicon v1.12 refuses a list
+            that leaves out a tag the category has (error code 5; move it out with
+            ``tags.update(..., category_id=...)`` or delete it) or names an unknown
+            tag (109). Lexicon v1.11 and older accept the list but change nothing.
+        position
+            New index of the category among all categories, starting at 0; the
+            others shift to make room. Lexicon v1.12 and newer.
         validation
             Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
             inputs with warnings, and ``"strict"`` raises on invalid inputs.
@@ -174,16 +185,34 @@ class TagCategories(Resource):
         if color is not None:
             payload["color"] = color
 
-        # tags param disabled — API accepts but doesn't persist. See api-issues.md
-        # if tags is not None:
-        #     normalized_tags = _normalize_id_sequence(tags)
-        #     if normalized_tags is None:
-        #         if validation == "strict":
-        #             raise ValueError(f"Invalid tags: {tags}")
-        #         if validation == "warn":
-        #             self._logger.warning("Invalid tags for update: %s", tags)
-        #             return None
-        #     payload["tags"] = normalized_tags
+        if tags is not None:
+            if validation == "off":
+                payload["tags"] = tags
+            else:
+                # The list is the full order, so a dropped or repeated ID is an error.
+                normalized_tags = (
+                    _normalize_id_sequence(tags)
+                    if isinstance(tags, Sequence) and not isinstance(tags, (str, bytes))
+                    else None
+                )
+                if normalized_tags is None or len(normalized_tags) != len(tags):
+                    if validation == "strict":
+                        raise ValueError(f"Invalid tags: {tags}")
+                    self._logger.warning("Invalid tags for update: %s", tags)
+                    return None
+                payload["tags"] = normalized_tags
+
+        if position is not None:
+            if validation != "off" and (
+                isinstance(position, bool)
+                or not isinstance(position, int)
+                or position < 0
+            ):
+                if validation == "strict":
+                    raise ValueError(f"Invalid position: {position}")
+                self._logger.warning("Invalid position for update: %s", position)
+                return None
+            payload["position"] = position
 
         if len(payload) == 1:
             self._logger.warning("No updates provided for tag category %s", category_id)

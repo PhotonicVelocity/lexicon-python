@@ -24,3 +24,5 @@ class TagResponse(TypedDict, total=False):
     label: Required[ReadOnly[str]]
     categoryId: Required[ReadOnly[int]]
     position: ReadOnly[int]
+    # Tag shortcut number (1 to 20) for the Application_Tags_*Shortcut actions, or None.
+    shortcut: ReadOnly[int | None]
