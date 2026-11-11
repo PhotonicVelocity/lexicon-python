@@ -772,6 +772,38 @@ class TracksValidationTests(unittest.TestCase):
             result = self.tracks.update(1, {"title": "x"}, validation="off")
         self.assertIsNone(result)
 
+    def test_update_returns_track_from_response(self):
+        # Lexicon v1.12 answers PATCH /track with the stored track, so no re-fetch.
+        patch_response = {"data": {"track": {"id": 7, "title": "x"}}}
+        with (
+            patch.object(self.tracks, "_patch", return_value=patch_response),
+            patch.object(self.tracks, "get") as mocked_get,
+        ):
+            result = self.tracks.update(7, {"title": "x"})
+        self.assertEqual(result, {"id": 7, "title": "x"})
+        mocked_get.assert_not_called()
+
+    def test_update_refetches_input_id_when_response_has_no_id(self):
+        # A data dict without "id" or "track" used to send GET /track?id=None.
+        with (
+            patch.object(self.tracks, "_patch", return_value={"data": {}}),
+            patch.object(self.tracks, "get", return_value={"id": 7}) as mocked_get,
+        ):
+            result = self.tracks.update(7, {"title": "x"})
+        self.assertEqual(result, {"id": 7})
+        self.assertEqual(mocked_get.call_args.args[0], 7)
+
+    def test_update_refetches_echoed_id(self):
+        # Lexicon v1.11 answers {"id": ..., "edits": {...}}.
+        with (
+            patch.object(
+                self.tracks, "_patch", return_value={"id": 7, "edits": {"title": "x"}}
+            ),
+            patch.object(self.tracks, "get", return_value={"id": 7}) as mocked_get,
+        ):
+            self.tracks.update(7, {"title": "x"})
+        self.assertEqual(mocked_get.call_args.args[0], 7)
+
     def test_update_sends_active_loop_as_json_boolean(self):
         cues = [
             {"position": 0, "startTime": 1.0, "type": "1", "activeLoop": False},

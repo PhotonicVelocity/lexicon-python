@@ -613,12 +613,16 @@ class Tracks(Resource):
         if not isinstance(response, dict):
             return None
 
-        # Response shape varies: {"id": ..., "edits": {...}}, {"data": {"id": ...}}, or {}
-        # Re-fetch to get the full updated track, falling back to input track_id
+        # Lexicon v1.12 returns the track as stored after the edit in data.track.
+        # Older versions return {"id": ..., "edits": {...}}, or {} for a tag edit,
+        # so re-fetch for those, falling back to the input track_id.
+        data = response.get("data")
+        track = data.get("track") if isinstance(data, dict) else None
+        if isinstance(track, dict):
+            return cast(TrackResponse, self._parse_enums(track))
         updated_id = response.get("id")
         if not isinstance(updated_id, int):
-            data = response.get("data")
-            updated_id = data.get("id") if isinstance(data, dict) else track_id
+            updated_id = track_id
         return self.get(updated_id, validation="off", timeout=timeout)
 
     def update_tempogrid(
