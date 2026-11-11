@@ -8,10 +8,10 @@ This document outlines potential enhancements organized by priority and scope.
 
 ### 1. Post-API Filtering for Client-Side Search
 
-**Problem**: Some simple track fields are ignored as server-side search filters (e.g., `archived`, `incoming`,
-`sizeBytes`). Date Fields can't use comparison filters. The fields that are arrays (`cuepoints`, `tempomarkers`) are
-also not accepted. `tags` is accepted with a custom comma separated string of tag names with `!` and `~` operators (e.g.
-`"~Rock, !Chill"` - Has tag `Rock` AND doesn't have tag `Chill`).
+**Problem**: Some simple track fields cannot be server-side search filters (e.g., `archived`, `incoming`; Lexicon v1.12
+rejects them with a 400, v1.11 ignored them). Date Fields can't use comparison filters. The fields that are arrays
+(`cuepoints`, `tempomarkers`) are also not accepted. `tags` is accepted with a custom comma separated string of tag
+names with `!` and `~` operators (e.g. `"~Rock, !Chill"` - Has tag `Rock` AND doesn't have tag `Chill`).
 
 **Solution**: Post fetch filtering. For simple fields this is relatively easy. For cuepoints and tempomarkers some
 schema will have to be determined, or could be handled by lamdas?
@@ -239,8 +239,10 @@ The canonical example is `tracks.update_tempogrid(...)`:
 3. `GET /v1/track?id=...` — fetch the updated track to return.
 
 For callers that only need `dateModified` and `tempomarkers` (e.g. a sync trigger), step 3 is unnecessary if the PATCH
-response already carries those fields. Today we don't _know_ whether it does, because the response shape isn't
-documented or probed.
+response already carries those fields. On Lexicon v1.12 it does: `PATCH /v1/track` returns the stored track, and
+`tracks.update()` (so `update_tempogrid()` too) now returns it without step 3. The other endpoints' v1.12 shapes are in
+`docs/api-issues.md` ("Added 2026-11-11"); `playlists.update()` still re-fetches because `PATCH /v1/playlist` returns
+only the id.
 
 Other affected methods include `tracks.update()`, `tracks.add()`, `playlists.{create, update, delete}`,
 `cue_points.{add, remove}`, and the tag/category mutation methods. Note 8 ("Validate Update Responses Before Re-Fetch")
@@ -263,9 +265,8 @@ variability makes the systematic probe more valuable, not less.
 The first option is cleanest if the shape is uniformly rich; the second is cleanest if some callers need the full record
 post-mutation; the third is appropriate if the canonical method's contract is widely relied on.
 
-**When it earns its keep**: hot paths in client code that mutate often and don't need the full re-fetch (e.g.
-music-tools' steady-state reverse-sync trigger pays a 33% HTTP overhead today on every push for a trailing GET it never
-uses).
+**When it earns its keep**: hot paths in client code that mutate often and don't need the full re-fetch (e.g. a sync
+trigger that pushes after every edit pays a 33% HTTP overhead for a trailing GET it never uses).
 
 **Coordination with note 8**: probe + method audit naturally feed into the validation work. Once we have the shape per
 endpoint documented, "validate edits before re-fetch" becomes "validate edits and _also_ decide whether re-fetch is
@@ -391,14 +392,15 @@ track = Track.from_api(lex.tracks.get(123))
 | Smartlist builder (#5)                      | High   | High   | Medium   |
 | Response caching (#6)                       | High   | Medium | Low      |
 | Dataclass/Pydantic models (#7)              | High   | Medium | Low      |
-| Lexicon v1.12 support (#15)                 | Medium | Medium | Medium   |
+| Lexicon v1.12 follow-ups (#16)              | Medium | Medium | Medium   |
 
 ---
 
 ### 8. Validate Update Responses Before Re-Fetch
 
-**Problem**: `tracks.update()` and `playlists.update()` currently re-fetch the full object after a PATCH, but don't
-verify that the API actually accepted the edits.
+**Problem**: `playlists.update()` re-fetches the playlist after a PATCH, and neither it nor `tracks.update()` verifies
+that the API applied the edits. On Lexicon v1.12, `PATCH /v1/track` returns the stored track and `tracks.update()`
+returns it without a re-fetch, so a check could compare the edits with that track directly.
 
 **Solution**: Compare the `edits` echoed back in the PATCH response (e.g.
 `{"id": 1, "edits": {"title": "My New Title"}}`) against what was sent. Warn or raise if they don't match before
@@ -412,33 +414,12 @@ an empty response as a failure.
 
 ---
 
-### 11. Position Reorder Helpers
+### 11. Position Reorder Helpers (Lexicon v1.11 only)
 
-**Problem**: Position behavior is inconsistent between tags and playlists:
-
-- **Tags**: rejects occupied positions with an error — requires vacating the target position first, then moving, then
-  restoring. Clunky for simple reorders.
-- **Playlists**: allows occupied positions but just creates overlaps (no insert/bump behavior). Ties broken by ID order.
-  No way to do a proper insert.
-- **Tag categories**: don't support position updates at all.
-
-**Solution**: Add helper methods that provide a consistent insert-at-position experience. For tags, handle the
-vacate-move-restore dance. For playlists, re-number sibling positions after insert to avoid overlaps.
-
-**Implementation Location**: `src/lexicon/resources/tags.py`, `src/lexicon/resources/playlists.py`
-
----
-
-### 12. Tag Category Bulk Tag Assignment
-
-**Problem**: The `tags` parameter on `PATCH /tag-category` is non-functional (see api-issues.md). There is no way to
-assign multiple tags to a category in one call.
-
-**Solution**: Add a helper like `tags.categories.set_tags(category_id, [tag_ids])` that sets the category's tag
-membership by updating each tag's `categoryId` individually via `PATCH /tag`. Could also support `add_tags` /
-`remove_tags` variants for partial updates.
-
-**Implementation Location**: `src/lexicon/resources/tag_categories.py`
+Lexicon v1.12 made this unnecessary: `playlists.update(position=)` inserts and shifts the other playlists,
+`tags.categories.update(tags=[...])` sets a category's whole tag order, and `tags.categories.update(position=)` moves a
+category. What remains is v1.11, where tag positions reject collisions (code `108`), playlist positions overlap, and
+categories have no position. Only worth doing if v1.11 support lasts.
 
 ---
 
@@ -470,8 +451,8 @@ don't need). But:
 2. **Update the `choose_playlist` docstring** to mention the requirement and point at the extra. IDE tooltips + `help()`
    then surface it upfront rather than at first `RuntimeError`.
 
-**When it earns its keep**: any downstream consumer that ships the interactive picker as a documented feature (e.g.
-music-tools' `add_lexicon` CLI picker). Also a small polish win for `help(lex.tools.playlists.choose_playlist)`.
+**When it earns its keep**: any downstream consumer that ships the interactive picker as a documented feature, such as a
+CLI that lets the user pick a playlist. Also a small polish win for `help(lex.tools.playlists.choose_playlist)`.
 
 **Implementation Location**: `pyproject.toml` (`[project.optional-dependencies]`), `src/lexicon/tools/playlists.py`
 (docstring of `choose_playlist`).
@@ -488,8 +469,8 @@ edit, a time shift: the audio file was replaced (a re-rip with different leading
 trimmed intro) and every marker and cue must move by the same number of seconds. For a uniform shift the beat math
 happens to give the same answer, because beats are preserved when every segment moves together, but it does so through
 float beat conversions and three HTTP calls, and a caller who shifts the cues themselves before calling it moves them
-twice. music-tools bypassed the method for the 2026-09 re-rip replacement and sent one `tracks.update()` with both lists
-shifted, which is the raw replacement the README already recommends for this case.
+twice. For a re-rip replacement the simpler path is one `tracks.update()` with both lists shifted, which is the raw
+replacement the README already recommends for this case.
 
 **Solution**: two small changes.
 
@@ -515,24 +496,23 @@ placed exactly on a marker.
 
 ---
 
-### 15. Lexicon v1.12 Support
+---
 
-**Problem**: The spec published 2026-11-01 describes v1.12, which has not been released, so none of this can be tested
-against 1.11.15 (see api-issues.md). Existing SDK calls stay valid against it, with one thing to check: the spec calls
-the `POST /control` response empty, and `lex.control()` and `tracks.analyze()` read a body of `{}` as success. If v1.12
-sends no body at all, `Lexicon.request()` returns `None` and both report failure.
+### 16. Follow-ups From Lexicon v1.12 Support
 
-**Solution**: Once v1.12 ships:
+Left open when v1.12 support landed (2026-11-11):
 
-1. Accept an API token (`token=` argument, `LEXICON_TOKEN` variable) and send `Authorization: Bearer <token>`, including
-   from `_verify_connection()`. It is only needed when Require Authentication is on; without it the probe fails with
-   HTTP 401 and a message that blames a missing Lexicon.
-2. Add `tracks.selected()` (`GET /tracks/selected`), `playlists.selected()` (`GET /playlists/selected`), and
-   `tracks.update_location(id, location, check_file_exists=True)` (`PATCH /track/location`). The last replaces the
-   direct `main.db` edit music-tools needs today, because the API could not write `location`.
-3. Add `id` and `fileType` to `FilterField`, and page `tracks.search()` with `limit` and `offset` past 1000. `filter.id`
-   must stay out until then: 1.11.15 ignores it and returns the whole library.
-4. Use the track that `PATCH /track` now returns instead of re-fetching (item 8).
-
-**Implementation Location**: `src/lexicon/client.py`, `src/lexicon/resources/tracks.py`,
-`src/lexicon/resources/tracks_types.py`, `src/lexicon/resources/playlists.py`.
+1. **Batch track lookups with `filter.id`.** `tracks.get_many()` and `playlists.tracks.get()` fetch one track per
+   request, or the whole library above a 5% cutoff. On v1.12 one `tracks.search({"id": ids})` per 1000 IDs does the
+   same; v1.11 needs the current path, and `search()` already detects a v1.11 that ignored the filter.
+2. **All tracks from `update("selected")`.** The response's `data.tracks` holds every edited track, but `update()`
+   returns `data.track`, the first one. An `update_selected()` returning the list would expose it.
+3. **Control actions found only in the app bundle.** `GhostCurator_*`, `Appearance_ZoomReset`, `Incoming_AllDone`,
+   `MusicPlayer_MetronomeSettings`, and `Navigation_SyncMobileApp` are in the 1.12.0 hotkey enum but not the spec. Test
+   them against an empty library before adding them to `ControlAction`.
+4. **Cue `activeLoop` as a boolean on v1.11.** The client now sends `true`/`false`, which v1.12 requires. v1.11.15
+   accepted `0`/`1`; booleans were not tested there.
+5. **Storing tokens.** The client keeps `lex.token` in memory and leaves storage to the caller. A helper that saves it
+   per host and app name (keyring or a config file) would make remote use easier.
+6. **Dropping v1.11.** The fallbacks (re-fetch after `PATCH /v1/track`, the `id` filter check, the paging retry, the
+   `Direct2Cdj_*` names) can go once v1.11 support ends.
