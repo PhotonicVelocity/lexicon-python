@@ -263,6 +263,129 @@ def test_analyze_track(lexicon, create_beat_file):
     assert bpm > 0
 
 
+def test_update_returns_the_stored_track(lexicon):
+    """Lexicon 1.12 answers PATCH /track with the stored track, relative edits applied."""
+    tracks = lexicon.tracks.list(fields=["id", "playCount"])
+    assert tracks
+    track = tracks[0]
+    result = lexicon.tracks.update(track["id"], edits={"playCount": "+2"})
+    assert result is not None
+    assert result["id"] == track["id"]
+    assert result["playCount"] == (track.get("playCount") or 0) + 2
+
+
+def test_cuepoint_data_and_active_loop_round_trip(lexicon, create_audio_file):
+    """Cue data sent back through the SDK is kept, and activeLoop goes out as a boolean."""
+    audio = create_audio_file("test_cue_data.wav")
+    added = lexicon.tracks.add([str(audio)])
+    assert added
+    track_id = added[0]["id"]
+    data = {"traktor": {"displayOrder": 0, "originalType": "1", "repeats": -1}}
+    cues = [
+        {
+            "position": 0,
+            "startTime": 1,
+            "type": "normal",
+            "activeLoop": 0,
+            "data": data,
+        },
+        {
+            "position": 1,
+            "startTime": 2.0,
+            "endTime": 3.0,
+            "type": "loop",
+            "activeLoop": 1,
+        },
+    ]
+    result = lexicon.tracks.update(
+        track_id, edits={"cuepoints": cues}, validation="strict"
+    )
+    assert result is not None
+    stored = sorted(result["cuepoints"], key=lambda cue: cue["position"])
+    assert [cue["activeLoop"] for cue in stored] == [False, True]
+    assert stored[0]["data"] == data
+
+    # Send the cues back as GET /track returns them, with one change: the data stays.
+    current = lexicon.tracks.get(track_id)
+    assert current is not None
+    resent = [dict(cue) for cue in current["cuepoints"]]
+    resent[1]["name"] = "Renamed"
+    result = lexicon.tracks.update(
+        track_id, edits={"cuepoints": resent}, validation="strict"
+    )
+    assert result is not None
+    stored = sorted(result["cuepoints"], key=lambda cue: cue["position"])
+    assert stored[0]["data"] == data
+    assert stored[1]["name"] == "Renamed"
+
+    # Tempo markers and cue points together in one edit.
+    result = lexicon.tracks.update(
+        track_id,
+        edits={"tempomarkers": [{"startTime": 0.25, "bpm": 128}], "cuepoints": resent},
+        validation="strict",
+    )
+    assert result is not None
+    assert [m["bpm"] for m in result["tempomarkers"]] == [128]
+    assert len(result["cuepoints"]) == 2
+
+
+def test_update_location(lexicon, create_audio_file):
+    """update_location points a track at another file and refuses a missing one."""
+    original = create_audio_file("test_location_a.wav")
+    moved = create_audio_file("test_location_b.wav")
+    added = lexicon.tracks.add([str(original)])
+    assert added
+    track_id = added[0]["id"]
+
+    result = lexicon.tracks.update_location(track_id, str(moved))
+    assert result is not None
+    assert result["location"].endswith("test_location_b.wav")
+
+    missing = moved.with_name("test_location_missing.wav")
+    assert lexicon.tracks.update_location(track_id, str(missing)) is None
+    result = lexicon.tracks.update_location(
+        track_id, str(missing), check_file_exists=False
+    )
+    assert result is not None
+    assert result["location"].endswith("test_location_missing.wav")
+
+    result = lexicon.tracks.update_location(track_id, str(original))
+    assert result is not None
+    assert result["location"].endswith("test_location_a.wav")
+
+
+def test_search_by_id_and_file_type(lexicon):
+    """The 1.12 id and fileType filters narrow the search."""
+    tracks = lexicon.tracks.list(fields=["id"])
+    assert tracks and len(tracks) >= 2
+    ids = [t["id"] for t in tracks[:2]]
+    results = lexicon.tracks.search({"id": ids}, fields=["id"])
+    assert results is not None
+    assert sorted(t["id"] for t in results) == sorted(ids)
+
+    wavs = lexicon.tracks.search({"fileType": "wav"}, fields=["id"])
+    assert wavs is not None
+    assert len(wavs) == len(tracks)
+    assert lexicon.tracks.search({"fileType": "flac"}, fields=["id"]) == []
+
+
+def test_search_untagged_and_limit(lexicon):
+    """tags=None finds untagged tracks, and limit caps the result."""
+    untagged = lexicon.tracks.search({"tags": None}, fields=["id", "tags"])
+    assert untagged is not None
+    assert untagged
+    assert all(not t.get("tags") for t in untagged)
+    limited = lexicon.tracks.search({"tags": None}, fields=["id"], limit=1)
+    assert limited is not None
+    assert len(limited) == 1
+
+
+def test_selected_tracks(lexicon):
+    """selected() answers with a list of IDs, empty when nothing is selected."""
+    selected = lexicon.tracks.selected()
+    assert isinstance(selected, list)
+
+
 def test_delete_track(lexicon):
     """Deleting all test tracks should leave the library empty."""
     tracks = lexicon.tracks.list(fields=["id"])

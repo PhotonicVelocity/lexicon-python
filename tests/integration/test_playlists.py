@@ -125,6 +125,31 @@ def test_update_playlist_parent(lexicon):
     assert result.get("parentId") == root
 
 
+def test_update_playlist_position_inserts(lexicon):
+    """In Lexicon 1.12 a new position shifts the other playlists to make room."""
+    folder_id = lexicon.playlists.add("IntTest Order Folder", playlist_type="folder")
+    assert folder_id is not None
+    ids = [
+        lexicon.playlists.add(
+            f"IntTest Order {n}", playlist_type="playlist", parent_id=folder_id
+        )
+        for n in range(3)
+    ]
+    assert all(ids)
+    assert lexicon.playlists.update(ids[2], position=0) is not None
+
+    playlists = [lexicon.playlists.get(playlist_id) for playlist_id in ids]
+    positions = {p["id"]: p["position"] for p in playlists}
+    assert [positions[ids[2]], positions[ids[0]], positions[ids[1]]] == [0, 1, 2]
+    assert lexicon.playlists.delete([folder_id]) is True
+
+
+def test_selected_playlists(lexicon):
+    """selected() answers with a list of playlist IDs."""
+    selected = lexicon.playlists.selected()
+    assert isinstance(selected, list)
+
+
 def test_get_by_path(lexicon):
     """Getting a nested playlist by path should work."""
     result = lexicon.playlists.get_by_path(

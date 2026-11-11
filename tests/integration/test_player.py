@@ -49,3 +49,18 @@ def test_queue_returns_a_list(lexicon):
 def test_control_rejects_an_unknown_action(lexicon):
     """Lexicon refuses an action it does not know, so control() reports False."""
     assert lexicon.control("Not_An_Action", validation="off") is False
+
+
+def test_control_uses_deckconnect_names(lexicon):
+    """Lexicon 1.12 renamed the Direct2Cdj_* actions to DeckConnect_*.
+
+    With no player connected the action does nothing, but the name is accepted.
+    """
+    assert lexicon.control("DeckConnect_LoadDeck", deckNumber=1) is True
+    assert lexicon.control("Direct2Cdj_LoadDeck", deckNumber=1) is False
+
+
+def test_client_sends_its_app_name(lexicon):
+    """The fixture's client is let in under its own app name."""
+    assert lexicon.app_name == "lexicon-python integration tests"
+    assert lexicon.player.queue() is not None
