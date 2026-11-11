@@ -772,6 +772,25 @@ class TracksValidationTests(unittest.TestCase):
             result = self.tracks.update(1, {"title": "x"}, validation="off")
         self.assertIsNone(result)
 
+    def test_update_sends_active_loop_as_json_boolean(self):
+        cues = [
+            {"position": 0, "startTime": 1.0, "type": "1", "activeLoop": False},
+            {"position": 1, "startTime": 2.0, "type": "5", "activeLoop": 1},
+            {"position": 2, "startTime": 3.0, "type": "5", "activeLoop": "true"},
+            {"position": 3, "startTime": 4.0, "type": "1"},
+        ]
+        with patch.object(
+            self.tracks, "_patch", return_value={"data": {"track": {"id": 7}}}
+        ) as mocked_patch:
+            self.tracks.update(7, {"cuepoints": cues}, validation="strict")
+        sent = mocked_patch.call_args.kwargs["json"]["edits"]["cuepoints"]
+        self.assertEqual(
+            [cue.get("activeLoop", "absent") for cue in sent],
+            [False, True, True, "absent"],
+        )
+        for cue in sent[:3]:
+            self.assertIsInstance(cue["activeLoop"], bool)
+
     def test_update_no_valid_edits_warn(self):
         with patch(
             "lexicon.resources.tracks._normalize_edits", return_value=({}, None, None)
@@ -1686,7 +1705,7 @@ class TracksTypesValidationTests(unittest.TestCase):
                 }
             ]
         )
-        self.assertEqual(payload[0].get("activeLoop"), 1)
+        self.assertIs(payload[0].get("activeLoop"), True)
         self.assertEqual(payload[0].get("color"), "red")
         self.assertFalse(errors.fatal or errors.dropped)
 

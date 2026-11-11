@@ -728,7 +728,7 @@ class CuePointUpdate(TypedDict, total=False):
     startTime: Required[float]
     type: Required["CuePointType"]
     name: str
-    activeLoop: int
+    activeLoop: bool
     endTime: float
     color: Color | None
 
@@ -810,8 +810,10 @@ def _normalize_cuepoints(
         activeLoop = cuepoint.get("activeLoop")
         if activeLoop is not None:
             try:
-                cuepoint_payload["activeLoop"] = _normalize_bool(
-                    activeLoop, context="edit"
+                # Lexicon v1.12 rejects 0 and 1 here with "activeLoop must be true or
+                # false"; it takes only a JSON boolean.
+                cuepoint_payload["activeLoop"] = bool(
+                    _normalize_bool(activeLoop, context="edit")
                 )
             except ValueError as exc:
                 errors.partial.append(str(exc))
