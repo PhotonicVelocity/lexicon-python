@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Literal, get_args
 
 # Generated from the Control Actions enum in docs/lexicon-api-docs.yaml by
-# scripts/update_control_actions.py. Do not edit by hand. The spec can be ahead of the released
-# app, so a name here can be one the running Lexicon rejects; see docs/api-issues.md.
+# scripts/update_control_actions.py, plus the DeckConnect_* names Lexicon 1.12 uses for the
+# spec's Direct2Cdj_* actions. Do not edit by hand. The list covers several Lexicon versions,
+# so a name here can be one the running Lexicon rejects; see docs/api-issues.md.
 ControlAction = Literal[
     "Appearance_ToggleTheme",
     "Appearance_ToggleCuey",
@@ -424,15 +425,25 @@ ControlAction = Literal[
     "Beatport_TabsMyBeatport",
     "Beatport_TabsMyCart",
     "Direct2Cdj_LoadDeck",
+    "DeckConnect_LoadDeck",
     "Direct2Cdj_LoadEmptyDeck",
+    "DeckConnect_LoadEmptyDeck",
     "Direct2Cdj_LoadDeck1",
+    "DeckConnect_LoadDeck1",
     "Direct2Cdj_LoadDeck2",
+    "DeckConnect_LoadDeck2",
     "Direct2Cdj_LoadDeck3",
+    "DeckConnect_LoadDeck3",
     "Direct2Cdj_LoadDeck4",
+    "DeckConnect_LoadDeck4",
     "Direct2Cdj_LoadDeck5",
+    "DeckConnect_LoadDeck5",
     "Direct2Cdj_LoadDeck6",
+    "DeckConnect_LoadDeck6",
     "Direct2Cdj_LoadDeck7",
+    "DeckConnect_LoadDeck7",
     "Direct2Cdj_LoadDeck8",
+    "DeckConnect_LoadDeck8",
     "AudioAnalyzer_Analyze",
     "PluginRunActionByName",
 ]
