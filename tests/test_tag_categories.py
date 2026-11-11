@@ -196,3 +196,48 @@ class TagCategoriesTests(unittest.TestCase):
     def test_delete_success(self):
         with patch.object(self.categories, "_delete", return_value={}):
             self.assertTrue(self.categories.delete([1, 2], validation="off"))
+
+
+class TagCategoryOrderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.categories = TagCategories(DummyClient())  # type: ignore[arg-type]
+
+    def _update(self, **kwargs):
+        response = {"id": 5, "label": "Cat", "tags": [3, 1, 2]}
+        with patch.object(self.categories, "_patch", return_value=response) as mocked:
+            result = self.categories.update(5, **kwargs)
+        return result, mocked
+
+    def test_tags_are_sent_in_order(self):
+        result, mocked = self._update(tags=[3, 1, 2])
+        self.assertEqual(mocked.call_args.kwargs["json"], {"id": 5, "tags": [3, 1, 2]})
+        self.assertEqual(result, {"id": 5, "label": "Cat", "tags": [3, 1, 2]})
+
+    def test_position_is_sent(self):
+        _, mocked = self._update(position=0)
+        self.assertEqual(mocked.call_args.kwargs["json"], {"id": 5, "position": 0})
+
+    def test_invalid_tags(self):
+        for bad in ([1, 1], [1, 0], 3, "1,2", []):
+            with self.subTest(tags=bad):
+                with patch.object(self.categories, "_patch") as mocked:
+                    with self.assertLogs("lexicon.tests", level="WARNING"):
+                        self.assertIsNone(self.categories.update(5, tags=bad))  # type: ignore[arg-type]
+                mocked.assert_not_called()
+                with self.assertRaises(ValueError):
+                    self.categories.update(5, tags=bad, validation="strict")  # type: ignore[arg-type]
+
+    def test_invalid_position(self):
+        for bad in (-1, True, "0"):
+            with self.subTest(position=bad):
+                with self.assertRaises(ValueError):
+                    self.categories.update(5, position=bad, validation="strict")  # type: ignore[arg-type]
+                with self.assertLogs("lexicon.tests", level="WARNING"):
+                    self.assertIsNone(self.categories.update(5, position=bad))  # type: ignore[arg-type]
+
+    def test_validation_off_passes_tags_and_position(self):
+        with patch.object(self.categories, "_patch", return_value={"id": 5}) as mocked:
+            self.categories.update(5, tags=[1, 1], position=-1, validation="off")  # type: ignore[arg-type]
+        self.assertEqual(
+            mocked.call_args.kwargs["json"], {"id": 5, "tags": [1, 1], "position": -1}
+        )

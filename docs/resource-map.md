@@ -7,9 +7,16 @@ Source: https://www.lexicondj.com/developer/api-docs.yaml
 
 ## Namespace Map
 
+Client
+
+- `Lexicon(app_name=..., token=...)` sends `X-Lexicon-App` and, with a token, `Authorization: Bearer <token>` on every
+  request (Lexicon v1.12 app approval). A token Lexicon returns in `X-Lexicon-Token` is kept in `lex.token`.
+- `lex.pair(name)` -> `POST /v1/auth/pair` (returns: token from `data.token`; raises `LexiconAuthError` when refused)
+
 Tracks
 
-- `lex.tracks.get(id)` -> `GET /v1/track` (returns: track dict from `data.track`)
+- `lex.tracks.get(id)` -> `GET /v1/track` (returns: track dict from `data.track`; `id` may be `"selected"` on v1.12)
+- `lex.tracks.selected()` -> `GET /v1/tracks/selected` (returns: ID list from `data.ids`; v1.12)
 - `lex.tracks.get_many(ids)` -> `GET /v1/track` (SDK helper; repeated calls; returns list aligned to input order, using
   `None` for missing IDs)
 - `lex.tracks.list(...)` -> `GET /v1/tracks` (returns: track list from `data.tracks`)
@@ -19,9 +26,16 @@ Tracks
 - `lex.tracks.search(filter, ...)` -> `GET /v1/search/tracks` (returns: track list from `data.tracks`)
   - Default fields: `id`, `artist`, `title`, `albumTitle`, `bpm`, `key`, `duration`, `year`, plus any fields in the
     search filter (override with `fields=[...]`).
-  - Results are capped at 1000 per API; wrapper returns the matching list only.
+  - Pagination: the first request sends no `limit`/`offset`, which v1.11 rejects. When `data.total` is larger than the
+    page, the wrapper requests the next pages with `offset` and `limit` (v1.12) until it has every match or `limit=`. On
+    v1.11 the second request fails and the wrapper returns the first 1000 with a warning.
+  - Filter `id` is sent as a comma separated string. When more tracks match than ids were sent, Lexicon ignored the
+    filter (v1.11) and the wrapper returns `None`.
 - `lex.tracks.add(locations)` -> `POST /v1/tracks` (returns: track list from `data.tracks`)
-- `lex.tracks.update(id, edits)` -> `PATCH /v1/track` (returns: updated track dict from `data.track`)
+- `lex.tracks.update(id, edits)` -> `PATCH /v1/track` (returns: updated track dict from `data.track`; v1.11 returns
+  `{id, edits}` or `{}`, so the wrapper falls back to `GET /v1/track`; `id` may be `"selected"` on v1.12)
+- `lex.tracks.update_location(id, location, check_file_exists)` -> `PATCH /v1/track/location` (returns: track dict from
+  `data.track`; v1.12)
 - `lex.tracks.delete(ids)` -> `DELETE /v1/tracks` (returns: no body)
 - `lex.tracks.analyze(ids, ...)` -> `POST /v1/control` with action `AudioAnalyzer_Analyze` (returns: no body)
   - Analysis runs in the background with no completion signal; `tempo_range` takes one of the analyze dropdown's eight
@@ -34,6 +48,7 @@ Playlists
 - `lex.playlists.get_many(ids)` -> `GET /v1/playlist` (SDK helper; repeated calls; returns list aligned to input order,
   using `None` for missing IDs)
 - `lex.playlists.list()` -> `GET /v1/playlists` (returns: playlist tree list from `data.playlists`)
+- `lex.playlists.selected()` -> `GET /v1/playlists/selected` (returns: ID list from `data.ids`; v1.12)
 - `lex.playlists.add(name, type, parent_id, smartlist)` -> `POST /v1/playlist` (returns: new playlist ID from `data.id`)
 - `lex.playlists.update(id, ...)` -> `PATCH /v1/playlist` (returns: updated playlist dict from `data.playlist`)
 - `lex.playlists.delete(ids)` -> `DELETE /v1/playlists` (returns: no body)
@@ -60,7 +75,8 @@ Tag categories (nested under tags)
 
 - `lex.tags.categories.list()` -> `GET /v1/tags` (returns: category list from `data.categories`)
 - `lex.tags.categories.add(label, color)` -> `POST /v1/tag-category` (returns: category dict from `data`)
-- `lex.tags.categories.update(id, label, color, tags)` -> `PATCH /v1/tag-category` (returns: category dict from `data`)
+- `lex.tags.categories.update(id, label, color, tags, position)` -> `PATCH /v1/tag-category` (returns: category dict at
+  the top level; `tags` and `position` take effect on v1.12 only)
 - `lex.tags.categories.delete(id)` -> `DELETE /v1/tag-category` (returns: no body)
 
 Player
@@ -77,12 +93,14 @@ Control
 
 - `lex.control(action, **parameters)` -> `POST /v1/control` (returns: bool; no body)
   - `True` means Lexicon accepted the request. It does not wait for the action and accepts one whose target is missing.
-  - Action names follow the newest spec, so some are rejected by older Lexicon versions. See api-issues.md.
+  - Action names follow the newest spec plus the `DeckConnect_*` names v1.12 uses for the spec's `Direct2Cdj_*`, so each
+    Lexicon version rejects some of them. See api-issues.md.
 
 ## Verb Sets (Locked)
 
-- tracks: get, get_many, list, search, add, update, delete, analyze
-- playlists: get, get_many, list, add, update, delete, get_by_path
+- client: request, control, pair
+- tracks: get, get_many, list, search, selected, add, update, update_location, delete, analyze
+- playlists: get, get_many, list, selected, add, update, delete, get_by_path
 - playlists.tracks: get, list, add, remove, update
 - tags: list, add, update, delete
 - tags.categories: list, add, update, delete
@@ -104,7 +122,7 @@ Playlists
 
 Proposed module layout for the namespace:
 
-- `lex` -> `src/lexicon/client.py` (client + `request(...)` + `control(...)`)
+- `lex` -> `src/lexicon/client.py` (client + `request(...)` + `control(...)` + `pair(...)`)
 - `lex.tracks` -> `src/lexicon/resources/tracks.py`
 - `lex.playlists` -> `src/lexicon/resources/playlists.py`
 - `lex.playlists.tracks` -> `src/lexicon/resources/playlist_tracks.py`

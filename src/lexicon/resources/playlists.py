@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import Optional, Sequence, TYPE_CHECKING, cast
 
 from .base import Resource
@@ -171,6 +172,33 @@ class Playlists(Resource):
             self._logger.warning("Playlists response missing expected root entry.")
             return None
         self._logger.warning("Playlists response missing expected list.")
+        return None
+
+    def selected(self, *, timeout: Optional[int] = None) -> builtins.list[int] | None:
+        """Fetch the IDs of the playlists selected in Lexicon's playlist tree.
+
+        Playlists, smartlists and folders are all listed; a selected folder is
+        listed by its own ID, not by the playlists inside it, and the root folder
+        never is. Needs Lexicon v1.12 or newer.
+
+        Parameters
+        ----------
+        timeout
+            Request timeout in seconds.
+
+        Returns
+        -------
+        list of int | None
+            Selected playlist IDs, empty when nothing is selected, or ``None`` on
+            error (including Lexicon v1.11 and older).
+        """
+        response = self._get("/playlists/selected", timeout=timeout)
+        data = response.get("data") if isinstance(response, dict) else None
+        ids = data.get("ids") if isinstance(data, dict) else None
+        if isinstance(ids, list):
+            return [playlist_id for playlist_id in ids if isinstance(playlist_id, int)]
+        if response is not None:
+            self._logger.warning("Selected playlists response missing expected ids.")
         return None
 
     def get_path(
@@ -353,9 +381,14 @@ class Playlists(Resource):
         name
             New name for the playlist.
         parent_id
-            New parent folder ID.
+            New parent folder ID. The playlist goes to the bottom of that folder
+            unless ``position`` is also given.
         position
-            New position among siblings.
+            New index among siblings, starting at 0. In Lexicon v1.12 and newer the
+            other playlists in the folder shift to make room, like dragging in the
+            playlist tree; with ``parent_id`` it is the index in the new folder.
+            Lexicon v1.11 and older store the number as-is, so two playlists can
+            share a position.
         smartlist
             Updated smartlist rule payload (type ``"3"``).
         validation

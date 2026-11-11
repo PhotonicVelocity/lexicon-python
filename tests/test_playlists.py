@@ -506,3 +506,26 @@ class PlaylistsTests(unittest.TestCase):
         with patch.object(self.playlists, "list", return_value=None):
             results = self.playlists.find_by_name("House")
         self.assertEqual(results, [])
+
+
+class PlaylistsSelectedTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.playlists = Playlists(DummyClient())  # type: ignore[arg-type]
+
+    def test_selected_returns_ids(self):
+        with patch.object(
+            self.playlists, "_get", return_value={"data": {"ids": [5, 9]}}
+        ) as mocked:
+            self.assertEqual(self.playlists.selected(), [5, 9])
+        self.assertEqual(mocked.call_args.args[0], "/playlists/selected")
+
+    def test_selected_error_returns_none(self):
+        with patch.object(self.playlists, "_get", return_value=None):
+            self.assertIsNone(self.playlists.selected())
+
+    def test_selected_unexpected_shape_warns(self):
+        with (
+            patch.object(self.playlists, "_get", return_value={"data": {}}),
+            self.assertLogs("lexicon.tests", level="WARNING"),
+        ):
+            self.assertIsNone(self.playlists.selected())

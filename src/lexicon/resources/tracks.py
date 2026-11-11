@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import Optional, Sequence, Literal, Mapping, cast
 
 from .base import Resource
@@ -30,6 +31,22 @@ from ._common_types import ValidationMode, _normalize_id_sequence
 # HTTP 400 and accepts only this internal id, which the spec has documented since 2026-11-01.
 ANALYZE_ACTION = "AudioAnalyzer_Analyze"
 
+# GET /track and PATCH /track take this in place of an ID for the selection in Lexicon
+# (v1.12 and newer).
+SELECTED = "selected"
+
+# Search pages hold at most this many tracks.
+PAGE_SIZE = 1000
+
+
+def _is_track_ref(track_id: object) -> bool:
+    """Report whether a value is a track ID or ``"selected"``."""
+    if track_id == SELECTED:
+        return True
+    return (
+        isinstance(track_id, int) and not isinstance(track_id, bool) and track_id >= 1
+    )
+
 
 class Tracks(Resource):
     """Track resource operations."""
@@ -51,7 +68,7 @@ class Tracks(Resource):
 
     def get(
         self,
-        track_id: int,
+        track_id: int | Literal["selected"],
         *,
         validation: ValidationMode = "warn",
         timeout: Optional[int] = None,
@@ -61,7 +78,10 @@ class Tracks(Resource):
         Parameters
         ----------
         track_id
-            Track ID to fetch.
+            Track ID to fetch, or ``"selected"`` for the track selected in Lexicon
+            (the topmost one when several are selected; see :meth:`selected`).
+            ``"selected"`` needs Lexicon v1.12 or newer, and fails with error code
+            113 when no track is selected.
         validation
             Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
             inputs with warnings, and ``"strict"`` raises on invalid inputs.
@@ -74,7 +94,7 @@ class Tracks(Resource):
         dict | None
             Track dict, or None if not found or on error.
         """
-        if not isinstance(track_id, int) or track_id < 1:
+        if not _is_track_ref(track_id):
             if validation == "strict":
                 raise ValueError(f"Invalid track_id for get: {track_id}")
             if validation == "warn":
@@ -90,6 +110,32 @@ class Tracks(Resource):
         if isinstance(track, dict):
             return cast(TrackResponse, self._parse_enums(track))
         self._logger.warning("Track %s not found in response", track_id)
+        return None
+
+    def selected(self, *, timeout: Optional[int] = None) -> builtins.list[int] | None:
+        """Fetch the IDs of the tracks selected in Lexicon.
+
+        The selection is the one in the track browser the user last worked in, in
+        the order Lexicon shows it. Needs Lexicon v1.12 or newer.
+
+        Parameters
+        ----------
+        timeout
+            Timeout in seconds for this request.
+
+        Returns
+        -------
+        list of int | None
+            Selected track IDs, empty when nothing is selected or no track browser
+            is open, or None on error (including Lexicon v1.11 and older).
+        """
+        response = self._get("/tracks/selected", timeout=timeout)
+        data = response.get("data") if isinstance(response, dict) else None
+        ids = data.get("ids") if isinstance(data, dict) else None
+        if isinstance(ids, list):
+            return [track_id for track_id in ids if isinstance(track_id, int)]
+        if response is not None:
+            self._logger.warning("Selected tracks response missing expected ids.")
         return None
 
     def get_many(
@@ -304,6 +350,7 @@ class Tracks(Resource):
         source: TrackSource | None = "non-archived",
         fields: Optional[Sequence[TrackField] | Literal["all", "*"]] = None,
         sort: Optional[SortInput] = None,
+        limit: Optional[int] = None,
         validation: ValidationMode = "warn",
         timeout: Optional[int] = None,
     ) -> list[TrackResponse] | None:
@@ -312,7 +359,20 @@ class Tracks(Resource):
         Parameters
         ----------
         filter
-            Mapping of track fields to values for filtering.
+            Mapping of track fields to values for filtering. A track has to match
+            all of them. See ``FilterField`` for the fields Lexicon can filter;
+            Lexicon v1.12 rejects any other field.
+
+            - ``id``: a track ID, a list of IDs, or ``"12,48,153"``. Resolves many
+              IDs in one request. Needs Lexicon v1.12; older versions ignore it, so
+              the search returns None rather than the whole library.
+            - ``fileType``: the file extension, such as ``"mp3"`` (v1.12).
+            - ``tags``: labels separated by commas; ``None`` finds untagged tracks
+              (v1.12).
+        limit
+            Maximum number of tracks to return. ``None`` (default) returns every
+            match. Lexicon v1.12 pages search results 1000 at a time and this
+            method follows the pages; older versions return at most 1000 matches.
         source
             Track source filter (e.g., "non-archived").
         fields
@@ -343,6 +403,7 @@ class Tracks(Resource):
         if validation == "off":
             payload["filter"] = filter
             filter_fields = []
+            id_filter: object = None
         else:
             try:
                 filter_payload, invalid_fields, value_errors = _normalize_filters(
@@ -374,6 +435,7 @@ class Tracks(Resource):
                 list[TrackField], [field for field in filter_payload.keys()]
             )
             payload["filter"] = filter_payload
+            id_filter = filter_payload.get("id")
 
         # Source - validate and add to payload
         if source:
@@ -443,30 +505,79 @@ class Tracks(Resource):
             if fields_payload is not None:
                 payload["fields"] = fields_payload
 
-        # Perform request. The API expects search payloads in the GET body.
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+                if validation == "strict":
+                    raise ValueError(f"Invalid limit for search: {limit}")
+                self._logger.warning("Ignoring invalid limit for search: %s", limit)
+                limit = None
+            elif limit == 0:
+                return []
+
+        # Perform request. The API expects search payloads in the GET body. The first
+        # request sends no paging keys, because Lexicon v1.11 rejects "limit" and
+        # "offset" here and answers with at most 1000 matches.
         response = self._request("GET", "/search/tracks", json=payload, timeout=timeout)
+        page = self._search_page(response)
+        if page is None:
+            return None
+        tracks, total = page
+
+        # Lexicon v1.11 ignores filter.id and answers with the whole library.
+        if isinstance(id_filter, str) and isinstance(total, int):
+            if total > len(id_filter.split(",")):
+                self._logger.warning(
+                    "Lexicon ignored the id filter and matched %s tracks; filtering by "
+                    "id needs Lexicon v1.12 or newer.",
+                    total,
+                )
+                return None
+
+        collected: builtins.list[dict] = [*tracks]
+        wanted = total if isinstance(total, int) else len(collected)
+        if limit is not None:
+            wanted = min(wanted, limit)
+        while len(collected) < wanted:
+            page_payload = dict(payload)
+            page_payload["offset"] = len(collected)
+            page_payload["limit"] = min(PAGE_SIZE, wanted - len(collected))
+            response = self._request(
+                "GET", "/search/tracks", json=page_payload, timeout=timeout
+            )
+            page = self._search_page(response)
+            if page is None or not page[0]:
+                self._logger.warning(
+                    "Search matched %s tracks but returned only %s; Lexicon versions "
+                    "older than v1.12 cannot page search results, so refine your filter.",
+                    total,
+                    len(collected),
+                )
+                break
+            collected.extend(page[0])
+
+        if limit is not None:
+            collected = collected[:limit]
+        return cast(
+            list[TrackResponse],
+            [self._parse_enums(t) if isinstance(t, dict) else t for t in collected],
+        )
+
+    def _search_page(
+        self, response: object
+    ) -> tuple[builtins.list[dict], Optional[int]] | None:
+        """Return the tracks and match total of one search response."""
         if not isinstance(response, dict):
             return None
-
-        # Extract tracks from response
-        data = response.get("data") if isinstance(response, dict) else None
+        data = response.get("data")
         tracks = data.get("tracks") if isinstance(data, dict) else None
-        if isinstance(tracks, list):
-            total = data.get("total") if isinstance(data, dict) else None
-            if isinstance(total, int) and total > len(tracks):
-                self._logger.warning(
-                    "Search matched %s total tracks but is limited to returning %s; refine your filter.",
-                    total,
-                    len(tracks),
-                )
-            return cast(
-                list[TrackResponse],
-                [self._parse_enums(t) if isinstance(t, dict) else t for t in tracks],
+        if not isinstance(tracks, list):
+            self._logger.warning(
+                "Tracks search response missing expected list; Response was %s",
+                response,
             )
-        self._logger.warning(
-            "Tracks search response missing expected list; Response was %s", response
-        )
-        return None
+            return None
+        total = data.get("total") if isinstance(data, dict) else None
+        return tracks, total if isinstance(total, int) else None
 
     def add(
         self,
@@ -537,7 +648,7 @@ class Tracks(Resource):
 
     def update(
         self,
-        track_id: int,
+        track_id: int | Literal["selected"],
         edits: Mapping[TrackEditField, object] | TrackUpdate,
         *,
         validation: ValidationMode = "warn",
@@ -548,16 +659,22 @@ class Tracks(Resource):
         Parameters
         ----------
         track_id
-            Track ID to update.
+            Track ID to update, or ``"selected"`` to give every track selected in
+            Lexicon the same edits (v1.12 and newer). A relative edit then counts
+            from each track's own value, and the return value is the first
+            edited track. Fails with error code 113 when nothing is selected.
         edits
             Mapping of fields to update.
             - Most fields from the Track schema are accepted, but file-derived fields
-              (e.g., location, bitrate) are not editable.
+              (e.g., location, bitrate) are not editable. Use
+              :meth:`update_location` to point a track at another file.
             - Numeric fields can be provided as numbers or as strings prefixed with
               `+` or `-` to apply relative changes.
             - Date fields must be in `YYYY-MM-DD` format.
             - `cuepoints`, `tempomarkers`, and `tags` accept arrays; see the TrackUpdate
-              schema for their required properties.
+              schema for their required properties. A `cuepoints` or `tempomarkers`
+              edit replaces the whole list. Lexicon clears the ``data`` of any cue or
+              marker sent without it, so pass it back from the track to keep it.
         validation
             Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
             inputs with warnings, and ``"strict"`` raises on invalid inputs.
@@ -570,7 +687,7 @@ class Tracks(Resource):
         TrackResponse or None
             Updated track dict, or ``None`` on error.
         """
-        if not isinstance(track_id, int) or track_id < 1:
+        if not _is_track_ref(track_id):
             if validation == "strict":
                 raise ValueError(f"Invalid track_id for updates: {track_id}")
             self._logger.warning("Invalid track_id for update: %s", track_id)
@@ -624,6 +741,71 @@ class Tracks(Resource):
         if not isinstance(updated_id, int):
             updated_id = track_id
         return self.get(updated_id, validation="off", timeout=timeout)
+
+    def update_location(
+        self,
+        track_id: int,
+        location: str,
+        *,
+        check_file_exists: bool = True,
+        validation: ValidationMode = "warn",
+        timeout: Optional[int] = None,
+    ) -> TrackResponse | None:
+        """Point a track at a different file. Needs Lexicon v1.12 or newer.
+
+        Only the library changes; the file is never moved or renamed.
+
+        Parameters
+        ----------
+        track_id
+            Track ID to relocate.
+        location
+            Full path to the new file. Lexicon normalizes it before saving (on
+            macOS it prefixes the drive, ``/Volumes/Macintosh HD/...``), so read
+            the location back from the returned track. A relative path is taken
+            from the root of the drive.
+        check_file_exists
+            When True (default), Lexicon refuses a file that does not exist (error
+            code 111). Pass False to relocate to a file that is not there, such as
+            one on a drive that is not mounted.
+        validation
+            Validation mode: ``"off"`` sends inputs as-is, ``"warn"`` drops invalid
+            inputs with warnings, and ``"strict"`` raises on invalid inputs.
+        timeout
+            Timeout in seconds for this request.
+
+        Returns
+        -------
+        TrackResponse or None
+            The relocated track, or ``None`` on error: the track does not exist
+            (code 100), another track already has the location (110), the file
+            does not exist (111), or the track is a streaming track.
+        """
+        if validation != "off":
+            problem = None
+            if not _is_track_ref(track_id) or track_id == SELECTED:
+                problem = f"Invalid track_id for update_location: {track_id}"
+            elif not isinstance(location, str) or not location.strip():
+                problem = f"Invalid location for update_location: {location!r}"
+            elif not isinstance(check_file_exists, bool):
+                problem = f"Invalid check_file_exists: {check_file_exists!r}"
+            if problem:
+                if validation == "strict":
+                    raise ValueError(problem)
+                self._logger.warning(problem)
+                return None
+
+        payload: dict[str, object] = {"id": track_id, "location": location}
+        if not check_file_exists:
+            payload["checkFileExists"] = False
+        response = self._patch("/track/location", json=payload, timeout=timeout)
+        data = response.get("data") if isinstance(response, dict) else None
+        track = data.get("track") if isinstance(data, dict) else None
+        if isinstance(track, dict):
+            return cast(TrackResponse, self._parse_enums(track))
+        if response is not None:
+            self._logger.warning("Update location response missing expected track.")
+        return None
 
     def update_tempogrid(
         self,

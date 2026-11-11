@@ -12,7 +12,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from lexicon.client import Lexicon, LexiconConnectionError  # noqa: E402
+from lexicon.client import (  # noqa: E402
+    APPROVAL_TIMEOUT,
+    PAIR_TIMEOUT,
+    Lexicon,
+    LexiconAuthError,
+    LexiconConnectionError,
+)
 from lexicon.resources.control_types import CONTROL_ACTIONS  # noqa: E402
 from lexicon.resources.tracks import ANALYZE_ACTION  # noqa: E402
 
@@ -27,12 +33,21 @@ logging.basicConfig(
 
 class FakeResponse:
     def __init__(
-        self, *, content=b"{}", json_payload=None, json_error=False, status_error=None
+        self,
+        *,
+        content=b"{}",
+        json_payload=None,
+        json_error=False,
+        status_error=None,
+        headers=None,
+        status_code=200,
     ):
         self.content = content
         self._json_payload = json_payload
         self._json_error = json_error
         self._status_error = status_error
+        self.headers = headers or {}
+        self.status_code = status_code
 
     def raise_for_status(self):
         if self._status_error:
@@ -48,9 +63,11 @@ class FakeSession:
     def __init__(self, response: FakeResponse):
         self.response = response
         self.calls = []
+        self.headers = []
 
-    def request(self, method, url, params=None, json=None, timeout=None):
+    def request(self, method, url, params=None, json=None, timeout=None, headers=None):
         self.calls.append((method, url, params, json, timeout))
+        self.headers.append(headers)
         return self.response
 
 
@@ -294,6 +311,148 @@ class ClientTests(unittest.TestCase):
         session = FakeSession(response)
         with self.assertRaises(LexiconConnectionError):
             Lexicon(session=session)
+
+
+def http_error(status: int, body: dict) -> FakeResponse:
+    """A FakeResponse that raises like requests does for an HTTP error status."""
+    response = FakeResponse(json_payload=body, status_code=status)
+    error = requests.HTTPError(f"{status} Error")
+    error.response = response  # type: ignore[assignment]
+    response._status_error = error
+    return response
+
+
+class AuthTests(unittest.TestCase):
+    def test_every_request_names_the_app(self):
+        client, session = make_client(FakeResponse(json_payload={}))
+        client.request("GET", "/tags")
+        self.assertEqual(session.headers[0], {"X-Lexicon-App": "lexicon-python"})
+
+    def test_custom_app_name_and_token(self):
+        session = FakeSession(FakeResponse(json_payload={}))
+        client = Lexicon(
+            session=session, verify_connection=False, app_name="My Tool", token="t0k"
+        )
+        client.request("GET", "/tags")
+        self.assertEqual(
+            session.headers[0],
+            {"X-Lexicon-App": "My Tool", "Authorization": "Bearer t0k"},
+        )
+
+    def test_environment_supplies_app_name_and_token(self):
+        session = FakeSession(FakeResponse(json_payload={}))
+        with (
+            patch.dict("os.environ", {"LEXICON_TOKEN": "env-token"}),
+            patch("lexicon.client.DEFAULT_APP_NAME", "env-app"),
+        ):
+            client = Lexicon(session=session, verify_connection=False)
+        self.assertEqual(client.app_name, "env-app")
+        self.assertEqual(client.token, "env-token")
+
+    def test_token_from_response_header_is_kept(self):
+        response = FakeResponse(json_payload={}, headers={"X-Lexicon-Token": "new"})
+        client, session = make_client(response)
+        with self.assertLogs("lexicon.client", level="INFO") as logs:
+            client.request("GET", "/tags")
+        self.assertEqual(client.token, "new")
+        self.assertFalse(any("new" in line for line in logs.output), logs.output)
+        client.request("GET", "/tags")
+        self.assertEqual(session.headers[1]["Authorization"], "Bearer new")
+
+    def test_request_logs_auth_hint(self):
+        client, _ = make_client(http_error(403, {"message": "blocked", "errorCode": 6}))
+        with self.assertLogs("lexicon.client", level="WARNING") as logs:
+            self.assertIsNone(client.request("GET", "/tags"))
+        self.assertTrue(any("blocked app" in line for line in logs.output))
+
+    def test_verify_waits_for_the_approval_popup(self):
+        session = FakeSession(FakeResponse(json_payload={"data": None}))
+        Lexicon(session=session)
+        self.assertEqual(session.calls[0][4], APPROVAL_TIMEOUT)
+        self.assertEqual(session.headers[0], {"X-Lexicon-App": "lexicon-python"})
+
+    def test_verify_raises_auth_error_for_each_refusal(self):
+        for status, code in ((401, 10), (403, 6), (409, 11), (401, 9)):
+            with self.subTest(code=code):
+                session = FakeSession(
+                    http_error(status, {"message": "no", "errorCode": code})
+                )
+                with self.assertRaises(LexiconAuthError) as ctx:
+                    Lexicon(session=session, app_name="Tool")
+                self.assertEqual(ctx.exception.error_code, code)
+                self.assertEqual(ctx.exception.status_code, status)
+                self.assertIsInstance(ctx.exception, LexiconConnectionError)
+
+    def test_verify_other_http_error_is_connection_error(self):
+        session = FakeSession(http_error(500, {"message": "x", "errorCode": 8}))
+        with self.assertRaises(LexiconConnectionError) as ctx:
+            Lexicon(session=session)
+        self.assertNotIsInstance(ctx.exception, LexiconAuthError)
+
+    def test_verify_keeps_issued_token(self):
+        session = FakeSession(
+            FakeResponse(json_payload={"data": None}, headers={"X-Lexicon-Token": "t"})
+        )
+        client = Lexicon(session=session)
+        self.assertEqual(client.token, "t")
+
+    def test_pair_returns_and_keeps_token(self):
+        session = FakeSession(FakeResponse(json_payload={"data": {"token": "abc"}}))
+        client = Lexicon(session=session, verify_connection=False)
+        self.assertEqual(client.pair("My Tool"), "abc")
+        self.assertEqual((client.token, client.app_name), ("abc", "My Tool"))
+        method, url, _, body, timeout = session.calls[0]
+        self.assertEqual((method, url), ("POST", "http://localhost:48624/v1/auth/pair"))
+        self.assertEqual(body, {"name": "My Tool"})
+        self.assertEqual(timeout, PAIR_TIMEOUT)
+        self.assertNotIn("Authorization", session.headers[0])
+
+    def test_pair_falls_back_to_header_token(self):
+        session = FakeSession(
+            FakeResponse(json_payload={}, headers={"X-Lexicon-Token": "hdr"})
+        )
+        client = Lexicon(session=session, verify_connection=False)
+        self.assertEqual(client.pair(), "hdr")
+
+    def test_pair_without_token_raises(self):
+        session = FakeSession(FakeResponse(json_payload={"data": {}}))
+        client = Lexicon(session=session, verify_connection=False)
+        with self.assertRaises(LexiconConnectionError):
+            client.pair()
+
+    def test_pair_refused(self):
+        session = FakeSession(http_error(409, {"message": "x", "errorCode": 11}))
+        client = Lexicon(session=session, verify_connection=False)
+        with self.assertRaises(LexiconAuthError) as ctx:
+            client.pair("Other")
+        self.assertIn("'Other'", str(ctx.exception))
+        self.assertEqual(client.app_name, "lexicon-python")
+        self.assertIsNone(client.token)
+
+    def test_pair_on_old_lexicon(self):
+        session = FakeSession(
+            http_error(400, {"message": "Endpoint does not exist", "errorCode": 4})
+        )
+        client = Lexicon(session=session, verify_connection=False)
+        with self.assertRaises(LexiconConnectionError) as ctx:
+            client.pair()
+        self.assertIn("v1.11", str(ctx.exception))
+
+    def test_pair_unreachable(self):
+        session = FakeSession(FakeResponse())
+        session.request = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            requests.ConnectionError("refused")
+        )
+        client = Lexicon(session=session, verify_connection=False)
+        with self.assertRaises(LexiconConnectionError):
+            client.pair()
+
+    def test_deckconnect_names_are_control_actions(self):
+        # Lexicon 1.12 renamed the Direct2Cdj_* actions; both stay valid names.
+        self.assertIn("DeckConnect_LoadDeck", CONTROL_ACTIONS)
+        self.assertIn("DeckConnect_LoadDeck8", CONTROL_ACTIONS)
+        self.assertIn("Direct2Cdj_LoadDeck", CONTROL_ACTIONS)
+        self.assertEqual(len(CONTROL_ACTIONS), len(set(CONTROL_ACTIONS)))
 
 
 if __name__ == "__main__":

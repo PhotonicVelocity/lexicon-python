@@ -21,10 +21,76 @@ from .tools import tracks as track_tools
 
 DEFAULT_HOST = os.environ.get("LEXICON_HOST", "localhost")
 LEXICON_PORT = int(os.environ.get("LEXICON_PORT", "48624"))
+DEFAULT_APP_NAME = os.environ.get("LEXICON_APP_NAME", "lexicon-python")
+
+# Starting in Lexicon v1.12, a request from an app the user has not answered for
+# brings up a popup and waits up to a minute for the answer, so the connection
+# probe has to outlast that wait.
+APPROVAL_TIMEOUT = 70
+# POST /v1/auth/pair waits up to two minutes for the user.
+PAIR_TIMEOUT = 130
+
+# Error codes Lexicon v1.12 uses to refuse an app, with what the caller can do.
+_AUTH_ERRORS: dict[int, str] = {
+    6: (
+        "The user blocked app {app!r} in Lexicon. Unblock it in the Lexicon "
+        "settings under Local API."
+    ),
+    9: (
+        "Lexicon refused the token, or the request did not name its app. Check the "
+        "token (token= or LEXICON_TOKEN); a wrong token counts as no token."
+    ),
+    10: (
+        "App {app!r} needs approval. Lexicon showed a popup and got no answer in "
+        "time, or it was closed without choosing. Allow the app in Lexicon and try "
+        "again; Lexicon waits a minute before asking about the same app again."
+    ),
+    11: (
+        "App {app!r} is already allowed, and this request did not send its token. "
+        "Pass the token (token= or LEXICON_TOKEN), or remove the app in the Lexicon "
+        "settings under Local API so it can ask again."
+    ),
+}
 
 
 class LexiconConnectionError(ConnectionError):
     """Raised when the client cannot reach the Lexicon Local API on construction."""
+
+
+class LexiconAuthError(LexiconConnectionError):
+    """Raised when Lexicon refuses the app: not approved, blocked, or a bad token.
+
+    Lexicon v1.12 and newer ask the user before an app can use the Local API.
+    ``error_code`` holds Lexicon's code: ``6`` blocked, ``9`` bad or missing
+    token, ``10`` not approved yet, ``11`` already allowed but no token sent.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: Optional[int] = None,
+        status_code: Optional[int] = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.status_code = status_code
+
+
+def _error_body(response: Any) -> tuple[Optional[int], Optional[str]]:
+    """Return the ``errorCode`` and ``message`` of a Lexicon error response."""
+    try:
+        body = response.json()
+    except (ValueError, AttributeError):
+        return None, None
+    if not isinstance(body, dict):
+        return None, None
+    code = body.get("errorCode")
+    message = body.get("message")
+    return (
+        code if isinstance(code, int) and not isinstance(code, bool) else None,
+        message if isinstance(message, str) else None,
+    )
 
 
 class Tools:
@@ -53,6 +119,8 @@ class Lexicon:
         raise_on_error: bool = False,
         raw_enums: bool = True,
         verify_connection: bool = True,
+        app_name: Optional[str] = None,
+        token: Optional[str] = None,
     ) -> None:
         """Create a Lexicon client bound to an API instance.
 
@@ -61,7 +129,8 @@ class Lexicon:
         host
             Hostname or IP for the Lexicon API.
         port
-            API port number.
+            API port number. Starting in Lexicon v1.12 the user can change it in
+            the Local API settings.
         default_timeout
             Default request timeout in seconds.
         session
@@ -75,12 +144,32 @@ class Lexicon:
             If True (default), probe the Lexicon API on construction and raise
             :class:`LexiconConnectionError` if it isn't reachable. Set to False
             to construct without a running Lexicon (e.g. for tests).
+
+            Starting in Lexicon v1.12, the first request from an app Lexicon has
+            not seen brings up a popup asking the user to allow it. The probe
+            waits up to ``APPROVAL_TIMEOUT`` seconds for the answer and raises
+            :class:`LexiconAuthError` when the app is refused.
+        app_name
+            The name Lexicon shows the user in the approval popup and in its Local
+            API settings, sent as the ``X-Lexicon-App`` header. Defaults to the
+            ``LEXICON_APP_NAME`` environment variable, then ``"lexicon-python"``.
+            Lexicon asks once per name, so give each tool its own.
+        token
+            The app's API token, sent as ``Authorization: Bearer <token>``.
+            Defaults to the ``LEXICON_TOKEN`` environment variable. Get one from
+            :meth:`pair`, from ``lex.token`` after the user allows the app, or
+            copy the API token from the Lexicon settings under Local API. On the
+            computer running Lexicon an allowed app is let in by name alone; from
+            another device the token is required. Lexicon v1.11 and older ignore
+            both headers.
         """
         self.host = host or DEFAULT_HOST
         self.port = int(port or LEXICON_PORT)
         self.default_timeout = default_timeout
         self.raise_on_error = raise_on_error
         self.raw_enums = raw_enums
+        self.app_name = app_name or DEFAULT_APP_NAME
+        self.token: Optional[str] = token or os.environ.get("LEXICON_TOKEN") or None
         self._logger = logging.getLogger(__name__)
         self._session = session
 
@@ -97,29 +186,168 @@ class Lexicon:
         if verify_connection:
             self._verify_connection()
 
+    def _headers(self) -> dict[str, str]:
+        """Return the headers that identify this app to Lexicon."""
+        headers = {"X-Lexicon-App": self.app_name}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
+
+    def _remember_token(self, response: Any) -> None:
+        """Keep the token Lexicon sends when the user allows this app.
+
+        Lexicon v1.12 returns it in the ``X-Lexicon-Token`` header of the request
+        that brought up the approval popup. It is never shown again, so the caller
+        should store ``lex.token``.
+        """
+        headers = getattr(response, "headers", None)
+        if not headers:
+            return
+        new_token = headers.get("X-Lexicon-Token")
+        if isinstance(new_token, str) and new_token and new_token != self.token:
+            self.token = new_token
+            self._logger.info(
+                "Lexicon issued a token for app %r. Store lex.token and pass it as "
+                "token= (or LEXICON_TOKEN) next time; Lexicon cannot show it again.",
+                self.app_name,
+            )
+
+    def _auth_error(
+        self, response: Any, *, app_name: Optional[str] = None
+    ) -> Optional[LexiconAuthError]:
+        """Build a :class:`LexiconAuthError` when Lexicon refused the app."""
+        if response is None:
+            return None
+        code, message = _error_body(response)
+        if code not in _AUTH_ERRORS:
+            return None
+        hint = _AUTH_ERRORS[code].format(app=app_name or self.app_name)
+        detail = f" Lexicon said: {message}" if message else ""
+        return LexiconAuthError(
+            f"{hint}{detail}",
+            error_code=code,
+            status_code=getattr(response, "status_code", None),
+        )
+
     def _verify_connection(self) -> None:
-        """Probe the Lexicon API to confirm it's reachable.
+        """Probe the Lexicon API to confirm it's reachable and lets this app in.
 
         Sends a single ``GET /v1/playing`` request, bypassing the swallow-and-warn
         behavior of :meth:`request`. Logs at INFO on success; raises
-        :class:`LexiconConnectionError` on any failure.
+        :class:`LexiconAuthError` when Lexicon refuses the app and
+        :class:`LexiconConnectionError` on any other failure.
         """
         url = f"http://{self.host}:{self.port}/v1/playing"
         requester = self._session or requests
+        response = None
         try:
-            response = requester.request("GET", url, timeout=self.default_timeout)
+            response = requester.request(
+                "GET",
+                url,
+                headers=self._headers(),
+                timeout=max(self.default_timeout, APPROVAL_TIMEOUT),
+            )
             response.raise_for_status()
-        except (
-            requests.ConnectionError,
-            requests.Timeout,
-            requests.HTTPError,
-        ) as exc:
+        except requests.HTTPError as exc:
+            # An error Response is falsy, so compare with None rather than using `or`.
+            auth_error = self._auth_error(
+                exc.response if exc.response is not None else response
+            )
+            if auth_error is not None:
+                raise auth_error from exc
+            raise LexiconConnectionError(
+                f"Lexicon at {self.host}:{self.port} answered with an error "
+                f"({exc.__class__.__name__}: {exc})."
+            ) from exc
+        except (requests.ConnectionError, requests.Timeout) as exc:
             raise LexiconConnectionError(
                 f"Could not reach Lexicon at {self.host}:{self.port} "
                 f"({exc.__class__.__name__}: {exc}). "
                 "Is Lexicon running with the Local API enabled?"
             ) from exc
+        self._remember_token(response)
         self._logger.info("Connected to Lexicon at %s:%s", self.host, self.port)
+
+    def pair(self, name: Optional[str] = None, *, timeout: Optional[int] = None) -> str:
+        """Ask the user to allow this app, and return its token.
+
+        Lexicon v1.12 and newer show the user a popup and this call waits for the
+        answer, up to two minutes. The token is also kept in ``lex.token``. Store
+        it: Lexicon only stores a hash, cannot show it again, and refuses a second
+        pairing for a name it already allowed.
+
+        Parameters
+        ----------
+        name
+            The app name to pair. Defaults to ``app_name``, and becomes the new
+            ``app_name`` so later requests match the token.
+        timeout
+            Timeout in seconds. Defaults to ``PAIR_TIMEOUT``.
+
+        Returns
+        -------
+        str
+            The token for this app.
+
+        Raises
+        ------
+        LexiconAuthError
+            When the user blocks the app (code ``6``), does not answer or closes
+            the popup (``10``), or the name is already allowed (``11``; the user
+            has to remove the app in the Lexicon settings to pair again).
+        LexiconConnectionError
+            When Lexicon cannot be reached or answers without a token, for example
+            a Lexicon older than v1.12.
+        """
+        app_name = name or self.app_name
+        url = f"http://{self.host}:{self.port}/v1/auth/pair"
+        requester = self._session or requests
+        headers = {"X-Lexicon-App": app_name}
+        response = None
+        try:
+            response = requester.request(
+                "POST",
+                url,
+                headers=headers,
+                json={"name": app_name},
+                timeout=timeout or PAIR_TIMEOUT,
+            )
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            auth_error = self._auth_error(
+                exc.response if exc.response is not None else response,
+                app_name=app_name,
+            )
+            if auth_error is not None:
+                raise auth_error from exc
+            raise LexiconConnectionError(
+                f"Pairing with Lexicon at {self.host}:{self.port} failed ({exc}). "
+                "Lexicon v1.11 and older have no pairing and need no token."
+            ) from exc
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            raise LexiconConnectionError(
+                f"Could not reach Lexicon at {self.host}:{self.port} "
+                f"({exc.__class__.__name__}: {exc})."
+            ) from exc
+
+        token: Optional[str] = None
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        data = body.get("data") if isinstance(body, dict) else None
+        if isinstance(data, dict) and isinstance(data.get("token"), str):
+            token = data["token"]
+        if not token:
+            header_token = response.headers.get("X-Lexicon-Token")
+            token = header_token if isinstance(header_token, str) else None
+        if not token:
+            raise LexiconConnectionError(
+                "Lexicon accepted the pairing request but sent no token."
+            )
+        self.app_name = app_name
+        self.token = token
+        return token
 
     def control(
         self,
@@ -219,6 +447,7 @@ class Lexicon:
                 url,
                 params=params,
                 json=json,
+                headers=self._headers(),
                 timeout=timeout or self.default_timeout,
             )
             response.raise_for_status()
@@ -239,6 +468,9 @@ class Lexicon:
                         error_msg = f"{exc}\nDetails: {error_body['detail']}"
             except (ValueError, AttributeError, KeyError):
                 pass  # Response wasn't JSON or didn't have expected fields
+            auth_error = self._auth_error(response)
+            if auth_error is not None:
+                error_msg = f"{error_msg}\n{auth_error}"
             self._logger.warning("Request failed for %s %s: %s", method, url, error_msg)
             return None
         except Exception as exc:  # noqa: BLE001 - surface request failures
@@ -247,6 +479,7 @@ class Lexicon:
             self._logger.warning("Request failed for %s %s: %s", method, url, exc)
             return None
 
+        self._remember_token(response)
         if not response.content:
             return None
         try:

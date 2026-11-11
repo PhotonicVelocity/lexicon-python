@@ -5,6 +5,13 @@ for the audio files the tests add. The app and database lifecycle these fixtures
 drive lives in lifecycle.py.
 
 Note: The Lexicon local API must be enabled in Lexicon settings for tests to connect.
+Lexicon v1.12 and newer ask the user to allow each app: the first run shows a popup
+for the app named in TEST_APP_NAME, and the tests wait for it. Lexicon keeps that
+answer outside main.db, so the swapped library does not ask again.
+
+The swap renames main.db. If the Lexicon data folder is synced to another machine
+(Syncthing, Dropbox, iCloud), pause the sync first, or the empty library and the
+rename reach that machine too.
 
 A watch folder configured in Lexicon is stored in Electron's Local Storage, not
 in main.db, so the emptied library still imports it on launch (observed: 6265
@@ -36,6 +43,8 @@ from .lifecycle import (
     restore_db,
 )
 
+TEST_APP_NAME = "lexicon-python integration tests"
+
 if not IS_MACOS and not IS_WINDOWS and lifecycle.LEXICON_DATA_DIR == "":
     pytest.skip(
         "Set LEXICON_DATA_DIR environment variable to the Lexicon data directory",
@@ -66,23 +75,29 @@ def lexicon():
     # Check if already running with an empty library. Lexicon() verifies the
     # connection on construction, so it is only built once the API answers.
     if is_api_ready():
-        client = Lexicon()
+        client = Lexicon(app_name=TEST_APP_NAME)
         tracks = client.tracks.list()
         if not tracks or len(tracks) == 0:
             yield client
             return
 
-    # Need to swap — library is populated or Lexicon isn't running
-    was_running = is_api_ready()
+    # Need to swap — library is populated or Lexicon isn't running. The process
+    # check comes first: an app whose API is off or not answering still holds
+    # main.db open, and moving the files under it can lose or corrupt the library.
+    was_running = lifecycle.is_lexicon_running() or is_api_ready()
     if was_running:
         quit_lexicon()
+    if lifecycle.is_lexicon_running():
+        raise RuntimeError(
+            "Lexicon is still running; refusing to move main.db out from under it."
+        )
     backup_db()
     clear_db()
     swapped = True
 
     try:
         launch_lexicon()
-        client = Lexicon()
+        client = Lexicon(app_name=TEST_APP_NAME)
 
         # Guard: verify the library is empty
         tracks = client.tracks.list()

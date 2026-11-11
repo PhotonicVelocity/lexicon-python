@@ -644,10 +644,15 @@ class TracksValidationTests(unittest.TestCase):
             )
 
     def test_search_response_total_warns(self):
+        # Lexicon v1.11 answers the first page and rejects "offset" on the next one.
         response = {"data": {"tracks": [{"id": 1}], "total": 10}}
-        with patch.object(self.tracks, "_request", return_value=response):
+        with (
+            patch.object(self.tracks, "_request", side_effect=[response, None]),
+            self.assertLogs("lexicon.tests", level="WARNING") as logs,
+        ):
             result = self.tracks.search({"title": "a"}, sort=[("title", "asc")])
         self.assertEqual(result, [{"id": 1}])
+        self.assertTrue(any("older than v1.12" in line for line in logs.output))
 
     def test_search_response_missing_tracks(self):
         with patch.object(self.tracks, "_request", return_value={"data": {}}):
@@ -1417,10 +1422,15 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertEqual(payload, {})
         self.assertIn("importSource", invalid_fields or [])
 
-    def test_normalize_filters_tags_error(self):
+    def test_normalize_filters_tags_none_finds_untagged(self):
         payload, invalid_fields, value_errors = _normalize_filters({"tags": None})
-        self.assertEqual(payload, {})
+        self.assertEqual(payload, {"tags": "none"})
         self.assertIsNone(invalid_fields)
+        self.assertIsNone(value_errors)
+
+    def test_normalize_filters_tags_error(self):
+        payload, _, value_errors = _normalize_filters({"tags": 5})
+        self.assertEqual(payload, {})
         self.assertTrue(any(err.startswith("tags:") for err in value_errors or []))
 
     def test_normalize_filters_success(self):
@@ -1645,8 +1655,7 @@ class TracksTypesValidationTests(unittest.TestCase):
 
     def test_normalize_tag_helpers(self):
         self.assertEqual(_normalize_tag_filter("tag1, !tag2"), "tag1, !tag2")
-        with self.assertRaises(ValueError):
-            _normalize_tag_filter(None)
+        self.assertEqual(_normalize_tag_filter(None), "none")
         with self.assertRaises(ValueError):
             _normalize_tag_filter(1)
         with self.assertRaises(ValueError):
@@ -1829,3 +1838,347 @@ class TracksTypesValidationTests(unittest.TestCase):
         self.assertIsNone(_normalize_tempo_range((98,)))
         self.assertIsNone(_normalize_tempo_range(98))
         self.assertIsNone(_normalize_tempo_range(None))
+
+
+class Lexicon112TrackTests(unittest.TestCase):
+    """Behavior added for Lexicon v1.12, with the v1.11 fallbacks."""
+
+    def setUp(self) -> None:
+        self.tracks = Tracks(DummyClient())  # type: ignore[arg-type]
+
+    # --- selected ---
+
+    def test_get_selected_sends_selected_as_id(self):
+        response = {"data": {"track": {"id": 4}}}
+        with patch.object(self.tracks, "_get", return_value=response) as mocked_get:
+            result = self.tracks.get("selected")
+        self.assertEqual(result, {"id": 4})
+        self.assertEqual(mocked_get.call_args.kwargs["params"], {"id": "selected"})
+
+    def test_get_rejects_other_strings_and_bools(self):
+        with self.assertRaises(ValueError):
+            self.tracks.get("current", validation="strict")  # type: ignore[arg-type]
+        with self.assertRaises(ValueError):
+            self.tracks.get(True, validation="strict")
+
+    def test_update_selected(self):
+        response = {"data": {"track": {"id": 4}, "tracks": [{"id": 4}, {"id": 9}]}}
+        with patch.object(self.tracks, "_patch", return_value=response) as mocked:
+            result = self.tracks.update("selected", {"rating": 5})
+        self.assertEqual(result, {"id": 4})
+        self.assertEqual(mocked.call_args.kwargs["json"]["id"], "selected")
+
+    def test_selected_returns_ids(self):
+        with patch.object(
+            self.tracks, "_get", return_value={"data": {"ids": [12, 7, 33]}}
+        ) as mocked_get:
+            self.assertEqual(self.tracks.selected(), [12, 7, 33])
+        self.assertEqual(mocked_get.call_args.args[0], "/tracks/selected")
+
+    def test_selected_empty(self):
+        with patch.object(self.tracks, "_get", return_value={"data": {"ids": []}}):
+            self.assertEqual(self.tracks.selected(), [])
+
+    def test_selected_error_returns_none(self):
+        # Lexicon v1.11 answers error code 4, which request() turns into None.
+        with patch.object(self.tracks, "_get", return_value=None):
+            self.assertIsNone(self.tracks.selected())
+
+    def test_selected_unexpected_shape_warns(self):
+        with (
+            patch.object(self.tracks, "_get", return_value={"data": {}}),
+            self.assertLogs("lexicon.tests", level="WARNING"),
+        ):
+            self.assertIsNone(self.tracks.selected())
+
+    # --- update_location ---
+
+    def test_update_location_sends_payload_and_returns_track(self):
+        track = {"id": 3, "location": "/Volumes/Macintosh HD/Music/a.mp3"}
+        with patch.object(
+            self.tracks, "_patch", return_value={"data": {"track": track}}
+        ) as mocked:
+            result = self.tracks.update_location(3, "/Music/a.mp3")
+        self.assertEqual(result, track)
+        self.assertEqual(mocked.call_args.args[0], "/track/location")
+        self.assertEqual(
+            mocked.call_args.kwargs["json"], {"id": 3, "location": "/Music/a.mp3"}
+        )
+
+    def test_update_location_without_file_check(self):
+        with patch.object(
+            self.tracks, "_patch", return_value={"data": {"track": {"id": 3}}}
+        ) as mocked:
+            self.tracks.update_location(3, "/x.mp3", check_file_exists=False)
+        self.assertIs(mocked.call_args.kwargs["json"]["checkFileExists"], False)
+
+    def test_update_location_error_returns_none(self):
+        with patch.object(self.tracks, "_patch", return_value=None):
+            self.assertIsNone(self.tracks.update_location(3, "/x.mp3"))
+
+    def test_update_location_unexpected_shape_warns(self):
+        with (
+            patch.object(self.tracks, "_patch", return_value={}),
+            self.assertLogs("lexicon.tests", level="WARNING"),
+        ):
+            self.assertIsNone(self.tracks.update_location(3, "/x.mp3"))
+
+    def test_update_location_validation(self):
+        for args in ((0, "/x"), (True, "/x"), ("3", "/x"), (3, ""), (3, None)):
+            with self.subTest(args=args):
+                with patch.object(self.tracks, "_patch") as mocked:
+                    with self.assertLogs("lexicon.tests", level="WARNING"):
+                        self.assertIsNone(self.tracks.update_location(*args))  # type: ignore[arg-type]
+                mocked.assert_not_called()
+                with self.assertRaises(ValueError):
+                    self.tracks.update_location(*args, validation="strict")  # type: ignore[arg-type]
+        with self.assertRaises(ValueError):
+            self.tracks.update_location(
+                3, "/x", check_file_exists="no", validation="strict"
+            )  # type: ignore[arg-type]
+
+    def test_update_location_validation_off_passes_through(self):
+        with patch.object(
+            self.tracks, "_patch", return_value={"data": {"track": {"id": 3}}}
+        ) as mocked:
+            self.tracks.update_location("3", "x", validation="off")  # type: ignore[arg-type]
+        self.assertEqual(mocked.call_args.kwargs["json"], {"id": "3", "location": "x"})
+
+    # --- search paging and new filters ---
+
+    @staticmethod
+    def _page(ids, total):
+        return {"data": {"tracks": [{"id": i} for i in ids], "total": total}}
+
+    def test_search_follows_pages(self):
+        pages = [
+            self._page(range(1, 1001), 2300),
+            self._page(range(1001, 2001), 2300),
+            self._page(range(2001, 2301), 2300),
+        ]
+        with patch.object(self.tracks, "_request", side_effect=pages) as mocked:
+            result = self.tracks.search({"artist": "a"})
+        self.assertEqual(len(result or []), 2300)
+        first, second, third = (c.kwargs["json"] for c in mocked.call_args_list)
+        self.assertNotIn("offset", first)
+        self.assertNotIn("limit", first)
+        self.assertEqual((second["offset"], second["limit"]), (1000, 1000))
+        self.assertEqual((third["offset"], third["limit"]), (2000, 300))
+
+    def test_search_limit_stops_paging(self):
+        pages = [self._page(range(1, 1001), 5000), self._page(range(1001, 1201), 5000)]
+        with patch.object(self.tracks, "_request", side_effect=pages) as mocked:
+            result = self.tracks.search({"artist": "a"}, limit=1200)
+        self.assertEqual(len(result or []), 1200)
+        self.assertEqual(mocked.call_args_list[1].kwargs["json"]["limit"], 200)
+
+    def test_search_limit_within_first_page(self):
+        with patch.object(
+            self.tracks, "_request", return_value=self._page(range(1, 1001), 5000)
+        ) as mocked:
+            result = self.tracks.search({"artist": "a"}, limit=5)
+        self.assertEqual([t["id"] for t in result or []], [1, 2, 3, 4, 5])
+        mocked.assert_called_once()
+
+    def test_search_limit_zero_sends_nothing(self):
+        with patch.object(self.tracks, "_request") as mocked:
+            self.assertEqual(self.tracks.search({"artist": "a"}, limit=0), [])
+        mocked.assert_not_called()
+
+    def test_search_invalid_limit(self):
+        with self.assertRaises(ValueError):
+            self.tracks.search({"artist": "a"}, limit=-1, validation="strict")
+        with (
+            patch.object(
+                self.tracks, "_request", return_value=self._page([1], 1)
+            ) as mocked,
+            self.assertLogs("lexicon.tests", level="WARNING"),
+        ):
+            self.tracks.search({"artist": "a"}, limit="5")  # type: ignore[arg-type]
+        self.assertNotIn("limit", mocked.call_args.kwargs["json"])
+
+    def test_search_stops_on_empty_page(self):
+        pages = [self._page([1], 3), self._page([], 3)]
+        with (
+            patch.object(self.tracks, "_request", side_effect=pages),
+            self.assertLogs("lexicon.tests", level="WARNING"),
+        ):
+            self.assertEqual(self.tracks.search({"artist": "a"}), [{"id": 1}])
+
+    def test_search_id_filter_forms(self):
+        for value, expected in [
+            (5, "5"),
+            ("12,48, 153", "12,48,153"),
+            ((12, 48, 12), "12,48"),
+            (["7", 8], "7,8"),
+        ]:
+            with self.subTest(value=value):
+                payload, _, errors = _normalize_filters({"id": value})
+                self.assertEqual(payload, {"id": expected})
+                self.assertIsNone(errors)
+        for bad in (True, 0, "a,b", [], [1.5], None, {"id": 1}):
+            with self.subTest(bad=bad):
+                payload, _, errors = _normalize_filters({"id": bad})
+                self.assertEqual(payload, {})
+                self.assertTrue(errors)
+
+    def test_search_id_filter_sends_string(self):
+        with patch.object(
+            self.tracks, "_request", return_value=self._page([12, 48], 2)
+        ) as mocked:
+            result = self.tracks.search({"id": [12, 48]}, fields=["id"])
+        self.assertEqual(result, [{"id": 12}, {"id": 48}])
+        self.assertEqual(mocked.call_args.kwargs["json"]["filter"], {"id": "12,48"})
+
+    def test_search_id_filter_ignored_by_old_lexicon_returns_none(self):
+        # Lexicon v1.11 ignores filter.id and matches the whole library.
+        with (
+            patch.object(
+                self.tracks, "_request", return_value=self._page(range(1, 1001), 8257)
+            ) as mocked,
+            self.assertLogs("lexicon.tests", level="WARNING") as logs,
+        ):
+            self.assertIsNone(self.tracks.search({"id": "12,48"}))
+        mocked.assert_called_once()
+        self.assertTrue(any("v1.12" in line for line in logs.output))
+
+    def test_search_file_type_filter(self):
+        payload, _, errors = _normalize_filters({"fileType": "flac"})
+        self.assertEqual(payload, {"fileType": "flac"})
+        self.assertIsNone(errors)
+
+    # --- cue point and tempo marker payloads ---
+
+    def test_cuepoint_data_is_kept(self):
+        data = {"traktor": {"displayOrder": 0, "originalType": "1", "repeats": -1}}
+        payload, errors = _normalize_cuepoints(
+            [
+                {"position": 0, "startTime": 1.0, "type": "1", "data": data},
+                {"position": 1, "startTime": 2.0, "type": "1", "data": None},
+                {"position": 2, "startTime": 3.0, "type": "1"},
+            ]
+        )
+        self.assertEqual(payload[0]["data"], data)
+        self.assertIsNone(payload[1]["data"])
+        self.assertNotIn("data", payload[2])
+        self.assertFalse(errors.fatal or errors.dropped or errors.partial)
+
+    def test_cuepoint_bad_data_is_left_out(self):
+        payload, errors = _normalize_cuepoints(
+            [{"position": 0, "startTime": 1.0, "type": "1", "data": "x"}]
+        )
+        self.assertNotIn("data", payload[0])
+        self.assertTrue(errors.partial)
+
+    def test_cuepoint_response_round_trips(self):
+        # A cue as GET /track returns it can be sent straight back.
+        cue = {
+            "id": 169875,
+            "trackId": 1073,
+            "name": "1 Intro",
+            "type": "1",
+            "startTime": 0.07,
+            "endTime": None,
+            "position": 0,
+            "color": "yellow",
+            "activeLoop": False,
+            "data": {"traktor": {"repeats": -1}},
+        }
+        payload, errors = _normalize_cuepoints([cue])
+        self.assertEqual(
+            payload,
+            [
+                {
+                    "position": 0,
+                    "startTime": 0.07,
+                    "type": "1",
+                    "name": "1 Intro",
+                    "activeLoop": False,
+                    "color": "yellow",
+                    "data": {"traktor": {"repeats": -1}},
+                }
+            ],
+        )
+        self.assertFalse(errors.fatal or errors.dropped or errors.partial)
+
+    def test_cuepoint_int_times_become_floats(self):
+        payload, errors = _normalize_cuepoints(
+            [{"position": 0, "startTime": 2, "endTime": 4, "type": "5"}]
+        )
+        self.assertEqual((payload[0]["startTime"], payload[0]["endTime"]), (2.0, 4.0))
+        self.assertIsInstance(payload[0]["startTime"], float)
+        self.assertFalse(errors.dropped or errors.partial)
+
+    def test_cuepoint_bool_times_and_positions_are_refused(self):
+        payload, errors = _normalize_cuepoints(
+            [
+                {"position": 0, "startTime": True, "type": "1"},
+                {"position": True, "startTime": 1.0, "type": "1"},
+            ]
+        )
+        self.assertEqual(payload, [])
+        self.assertEqual(len(errors.dropped), 2)
+
+    def test_cuepoint_duplicate_position_is_dropped(self):
+        # Lexicon v1.12 stores one cue per position and silently drops the others.
+        payload, errors = _normalize_cuepoints(
+            [
+                {"position": 0, "startTime": 1.0, "type": "1"},
+                {"position": 0, "startTime": 2.0, "type": "1"},
+            ]
+        )
+        self.assertEqual([cue["startTime"] for cue in payload], [1.0])
+        self.assertTrue(any("Duplicate position" in e for e in errors.dropped))
+
+    def test_tempomarker_data_kept_and_int_start(self):
+        data = {"traktor": {"name": "Beat Marker"}}
+        payload, errors = _normalize_tempomarkers(
+            [
+                {"startTime": 0, "bpm": 120, "data": data},
+                {"startTime": 4.5, "bpm": 121.5},
+            ]
+        )
+        self.assertEqual(
+            payload,
+            [
+                {"startTime": 0.0, "bpm": 120, "data": data},
+                {"startTime": 4.5, "bpm": 121.5},
+            ],
+        )
+        self.assertFalse(errors.dropped)
+
+    def test_tempomarker_bad_data_or_bool_bpm_dropped(self):
+        payload, errors = _normalize_tempomarkers(
+            [
+                {"startTime": 0.0, "bpm": 120, "data": "x"},
+                {"startTime": 1.0, "bpm": True},
+            ]
+        )
+        self.assertEqual(payload, [])
+        self.assertEqual(len(errors.dropped), 2)
+
+    def test_update_tempogrid_keeps_cue_data(self):
+        old = {
+            "tempomarkers": [{"startTime": 0.0, "bpm": 60.0, "data": None}],
+            "cuepoints": [
+                {
+                    "id": 1,
+                    "trackId": 9,
+                    "position": 0,
+                    "startTime": 4.0,
+                    "type": "1",
+                    "data": {"traktor": {"repeats": -1}},
+                }
+            ],
+        }
+        with (
+            patch.object(self.tracks, "get", return_value=old),
+            patch.object(
+                self.tracks, "_patch", return_value={"data": {"track": {"id": 9}}}
+            ) as mocked,
+        ):
+            self.tracks.update_tempogrid(9, [{"startTime": 0.0, "bpm": 120.0}])
+        sent = mocked.call_args.kwargs["json"]["edits"]["cuepoints"]
+        self.assertEqual(sent[0]["data"], {"traktor": {"repeats": -1}})
+        self.assertAlmostEqual(sent[0]["startTime"], 2.0)
+        self.assertNotIn("id", sent[0])

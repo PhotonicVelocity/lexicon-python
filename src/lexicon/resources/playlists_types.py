@@ -24,8 +24,10 @@ class PlaylistResponse(TypedDict, total=False):
     parentId: Required[ReadOnly[int | None]]
     position: Required[ReadOnly[int]]
     folderType: ReadOnly[PlaylistFolderType | None]
+    # For a folder: the tracks of every playlist inside it, each track once.
     trackIds: ReadOnly[list[int]]
     smartlist: ReadOnly[dict[str, object]]
+    data: ReadOnly[dict | None]
 
 
 # --- Playlist Type Definitions --- #

@@ -10,7 +10,8 @@ API.
 
 - Resource grouped client (`lex.tracks`, `lex.playlists`, `lex.tags`, `lex.player`)
 - Player and hotkey commands via `lex.player` and `lex.control()`
-- Pagination handled for `tracks.list()` (API returns 1000 per page)
+- Pagination handled for `tracks.list()` and `tracks.search()` (API returns 1000 per page)
+- Lexicon v1.12 app approval and tokens, with v1.11 still supported
 - Validation modes for inputs: warn (default), strict, or off
 - Typed responses and payload hints (TypedDicts and Literals)
 - Optional interactive playlist chooser via `InquirerPy`
@@ -18,8 +19,9 @@ API.
 
 ## Requirements
 
-- Python 3.9+
-- Lexicon DJ running with Local API enabled
+- Python 3.10+
+- Lexicon DJ running with the Local API enabled (Lexicon settings, Local API). Lexicon v1.12 is the target; v1.11 works
+  for everything that existed in it (see [Lexicon versions](#lexicon-versions)).
 
 ## Install
 
@@ -32,7 +34,9 @@ pip install lexicon-python
 ```python
 from lexicon import Lexicon
 
-lex = Lexicon()  # verifies the API is reachable; raises LexiconConnectionError otherwise
+# Verifies the API is reachable; raises LexiconConnectionError otherwise. On Lexicon v1.12
+# the first run shows the user a popup asking to allow the app; see Authentication.
+lex = Lexicon(app_name="My Lexicon Tool")
 playlist = lex.playlists.choose()
 
 # list tracks (default fields: id, artist, title, bpm, key, ...)
@@ -72,14 +76,55 @@ Other options:
 - `session`: optional `requests.Session`
 - `raise_on_error`: raise HTTP errors instead of returning None
 - `verify_connection` (default `True`): probe the API on construction and raise `LexiconConnectionError` if Lexicon
-  isn't reachable. Set to `False` to build a client without a running Lexicon (e.g. for tests).
+  isn't reachable, or `LexiconAuthError` if it refuses the app. Set to `False` to build a client without a running
+  Lexicon (e.g. for tests).
+- `app_name` (default `"lexicon-python"`): the name the user sees in Lexicon's approval popup and settings.
+- `token`: the app's API token for Lexicon v1.12 (see below).
 
 Environment variables:
 
 ```bash
 export LEXICON_HOST=localhost
-export LEXICON_PORT=48624
+export LEXICON_PORT=48624         # Lexicon v1.12 lets the user change it in the Local API settings
+export LEXICON_APP_NAME="My Lexicon Tool"
+export LEXICON_TOKEN=...          # optional, see Authentication
 ```
+
+## Authentication
+
+Starting in Lexicon v1.12, the user has to allow each app before it can use the API. Every request names the app in the
+`X-Lexicon-App` header (`app_name`, default `"lexicon-python"`). Lexicon asks once per name, so give each tool its own.
+
+- **First run:** the first request from a new app name shows the user a popup, and Lexicon holds the request until they
+  answer. `Lexicon()` waits up to 70 seconds for that. When the user allows the app, Lexicon sends a token, which the
+  client keeps in `lex.token`.
+- **On the computer running Lexicon:** an allowed app is let in by name alone, so a local script needs no token.
+- **From another device:** every request needs the token. Store `lex.token` and pass it back as `token=` or
+  `LEXICON_TOKEN`. Lexicon only keeps a hash, so it cannot show the token again.
+- **Pairing explicitly:** `lex.pair()` asks the user right away (waiting up to two minutes) and returns the token.
+- **Personal scripts:** the user can instead copy the API token from the Lexicon settings under Local API. Lexicon
+  always lets that token in.
+
+```python
+from lexicon import Lexicon, LexiconAuthError
+
+try:
+    lex = Lexicon(app_name="My Lexicon Tool", token=load_saved_token())
+except LexiconAuthError as exc:
+    print(exc.error_code, exc)  # 10: not answered yet, 6: blocked, 11: allowed but token missing
+```
+
+`LexiconAuthError` (a `LexiconConnectionError`) carries Lexicon's error code:
+
+| Code | Meaning                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| `10` | The popup was not answered in time, or was closed. Lexicon waits a minute before asking again. |
+| `6`  | The user blocked the app. Unblock it in the Lexicon settings.                                  |
+| `11` | The name is already allowed, but the request did not send its token.                           |
+| `9`  | The token is wrong, or the request looked like it came from a web page.                        |
+
+The user can block or remove an app at any time in the Lexicon settings, which stops its token from working. Lexicon
+v1.11 and older have no authentication and ignore these headers.
 
 ## Validation Modes
 
@@ -149,6 +194,12 @@ added = lex.tracks.add(["/path/to/file1.mp3", "/path/to/file2.mp3"])
 updated = lex.tracks.update(123, {"title": "New Title"})
 lex.tracks.delete([123, 456])
 
+# Lexicon v1.12: the selection in Lexicon, and relocating a track to another file
+ids = lex.tracks.selected()                      # [12, 7, 33]
+track = lex.tracks.get("selected")               # the topmost selected track
+lex.tracks.update("selected", {"rating": 5})     # every selected track
+moved = lex.tracks.update_location(123, "/Music/new/file.mp3")
+
 # Replace tempomarkers while keeping cuepoints anchored to the same beats
 lex.tracks.update_tempogrid(123, [{"startTime": 0.0, "bpm": 124.0}])
 
@@ -158,7 +209,15 @@ lex.tracks.analyze([123, 456], analyze_beatgrid=True, do_not_overwrite=False)
 
 Notes:
 
-- `tracks.search()` results are capped at 1000 by the API.
+- `tracks.search()` returns every match on Lexicon v1.12, which pages results 1000 at a time; pass `limit=` to cap it.
+  Lexicon v1.11 returns at most 1000 matches and logs a warning when there are more.
+- `tracks.update()` returns the track as Lexicon stored it. On v1.12 that comes from the PATCH response; on older
+  versions the client fetches it again.
+- A `cuepoints` or `tempomarkers` edit replaces the whole list, and Lexicon clears the `data` of any cue or marker sent
+  without it. That `data` holds what a DJ app import stored (Traktor, Rekordbox, ...), so to keep it, edit the list from
+  `tracks.get()` and send it back. `update_tempogrid()` does this for cuepoints.
+- `tracks.update_location()` only changes the library; the file is never moved. Lexicon normalizes the path, so read
+  `location` back from the returned track.
 - `tracks.get_many()` preserves input order and returns `None` for missing IDs.
 - `tracks.get()` always returns the full record (no `fields` parameter).
 - For `tracks.list()` / `tracks.search()`:
@@ -227,6 +286,11 @@ lex.tracks.search({"dateAdded": ">2024-01-01"})
 lex.tracks.search({"tags": "Rock, Chill"})     # Rock OR Chill
 lex.tracks.search({"tags": "~Rock, Chill"})    # Rock AND Chill
 lex.tracks.search({"tags": "~Rock, !Chill"})   # Rock AND NOT Chill
+lex.tracks.search({"tags": None})              # no tags at all (v1.12)
+
+# Lexicon v1.12: look tracks up by id, or by file extension
+lex.tracks.search({"id": [12, 48, 153]}, fields=["id", "title"])
+lex.tracks.search({"fileType": "flac"})
 ```
 
 Tag filter details:
@@ -235,7 +299,11 @@ Tag filter details:
 - Whitespace is ignored around commas.
 - `~` at the start switches from OR to AND for the list.
 - `!` before a tag name negates that tag.
-- There is no supported way to search for “no tags”; `NONE` is not accepted.
+- `None` finds tracks without any tag on Lexicon v1.12 (unless a tag is labeled "None").
+
+Lexicon v1.12 rejects a filter on a field it cannot filter with an error, where v1.11 silently ignored it. The `id`
+filter is the dangerous case on v1.11, which ignores it and matches the whole library, so `search()` returns `None` when
+more tracks come back than ids were asked for.
 
 Sort can be expressed in two shapes:
 
@@ -253,7 +321,10 @@ tree = lex.playlists.list()
 
 new_id = lex.playlists.add("Demo Playlist", playlist_type="playlist", parent_id=1)
 lex.playlists.update(new_id, name="Renamed Playlist")
+lex.playlists.update(new_id, position=0)  # v1.12: the others shift down, like dragging
 lex.playlists.delete([new_id])
+
+selected = lex.playlists.selected()  # v1.12: IDs selected in the playlist tree
 ```
 
 Playlist type accepts:
@@ -285,6 +356,11 @@ categories = lex.tags.categories.list()
 new_cat = lex.tags.categories.add(label="Demo Category", color="red")
 lex.tags.categories.update(new_cat["id"], label="Renamed Category")
 lex.tags.categories.delete(new_cat["id"])
+
+# Lexicon v1.12: reorder a category's tags (every tag it has, in the new order; tags from
+# other categories move in), and move the category itself
+lex.tags.categories.update(new_cat["id"], tags=[12, 10, 11])
+lex.tags.categories.update(new_cat["id"], position=0)
 ```
 
 ## Player
@@ -312,7 +388,10 @@ lex.control("MusicPlayer_Seek", seconds=30)
 
 It returns `True` when Lexicon accepts the request. Lexicon does not wait for the action to finish and has no completion
 signal, and it accepts an action whose target is missing, such as one for the selected tracks with nothing selected.
-Names are checked against the `ControlAction` list; pass `validation="off"` for one that is not listed.
+Names are checked against the `ControlAction` list; pass `validation="off"` for one that is not listed. The list covers
+Lexicon v1.11 and v1.12, so it holds both names of the actions v1.12 renamed: v1.12 calls the `Direct2Cdj_*` player
+actions `DeckConnect_*` (`DeckConnect_LoadDeck`, `DeckConnect_LoadDeck1` to `8`, `DeckConnect_LoadEmptyDeck`) and
+rejects the old names.
 
 ## Tools
 
@@ -354,13 +433,32 @@ payload = lex.request("GET", "/tracks", params={"fields": "all"})
 
 High level namespaces (full mapping in `docs/resource-map.md`):
 
-- `lex.tracks`: get, get_many, list, search, add, update, delete
-- `lex.playlists`: get, get_many, list (tree root), get_path, get_by_path, add, update, delete, choose
+- `lex.tracks`: get, get_many, list, search, selected, add, update, update_location, update_tempogrid, add_tags,
+  remove_tags, delete, analyze
+- `lex.playlists`: get, get_many, list (tree root), selected, get_path, get_by_path, add, update, delete, choose
 - `lex.playlists.tracks`: list (IDs), get (track dicts), add, remove, update
 - `lex.tags`: list, add, update, delete
 - `lex.tags.categories`: list, add, update, delete
 - `lex.player`: playing, queue
 - `lex.control()`: run a control action
+- `lex.pair()`: ask the user to allow the app and get its token (v1.12)
+
+## Lexicon versions
+
+The client targets Lexicon v1.12 and keeps working with v1.11. Requests are the same, and the client falls back where
+v1.11 answers differently:
+
+| Feature                                              | v1.12                   | v1.11                                                    |
+| ---------------------------------------------------- | ----------------------- | -------------------------------------------------------- |
+| App approval, `token`, `pair()`                      | required                | no authentication; headers ignored                       |
+| `selected()`, `get("selected")`, `update_location()` | yes                     | `None` (endpoint does not exist)                         |
+| `search()` past 1000 matches                         | pages through all       | first 1000, with a warning                               |
+| `search()` filters `id`, `fileType`, `tags=None`     | yes                     | `id`: `None`; `fileType`: error; `tags=None`: no matches |
+| `update()` result                                    | from the PATCH response | fetched again                                            |
+| `playlists.update(position=)`                        | inserts, others shift   | stores the number, positions can overlap                 |
+| `tags.categories.update(tags=, position=)`           | yes                     | accepted but ignored                                     |
+| Cue `activeLoop`                                     | sent as `true`/`false`  | not tested with booleans                                 |
+| DeckConnect actions                                  | `DeckConnect_*`         | `Direct2Cdj_*`                                           |
 
 ## Type Hints
 
@@ -409,6 +507,11 @@ make run-tests
 # The fixture setup will back up the existing library, clear it for testing, and restore it afterward.
 make run-integration-tests
 ```
+
+The integration fixture quits Lexicon and renames `main.db` while it runs. If the Lexicon data folder is synced to
+another machine (Syncthing, Dropbox, iCloud), pause the sync first. On Lexicon v1.12 the first run shows an approval
+popup for "lexicon-python integration tests"; Lexicon remembers the answer outside the library, so later runs do not ask
+again.
 
 ### Linting and Formatting
 

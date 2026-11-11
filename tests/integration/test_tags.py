@@ -135,6 +135,34 @@ def test_update_tag_category(lexicon):
     assert result["categoryId"] == original_category
 
 
+def test_reorder_category_tags(lexicon):
+    """Lexicon 1.12 applies the tags order sent to PATCH /tag-category."""
+    categories = lexicon.tags.categories.list()
+    category = next(c for c in categories if c["label"] == "Integration Cat Updated")
+    order = list(reversed(category["tags"]))
+    assert len(order) >= 2
+    result = lexicon.tags.categories.update(category["id"], tags=order)
+    assert result is not None
+    assert result["tags"] == order
+
+    # Leaving out a tag the category has is refused, and nothing changes.
+    assert lexicon.tags.categories.update(category["id"], tags=order[:-1]) is None
+    category = next(
+        c for c in lexicon.tags.categories.list() if c["id"] == category["id"]
+    )
+    assert category["tags"] == order
+
+
+def test_update_category_position(lexicon):
+    """A category moved to position 0 comes first."""
+    categories = lexicon.tags.categories.list()
+    category = next(c for c in categories if c["label"] == "Integration Cat Updated")
+    result = lexicon.tags.categories.update(category["id"], position=0)
+    assert result is not None
+    assert result["position"] == 0
+    assert lexicon.tags.categories.list()[0]["id"] == category["id"]
+
+
 def test_tag_track(lexicon, create_audio_file):
     """Tagging a track should persist the tag IDs on the track."""
     # Add a track

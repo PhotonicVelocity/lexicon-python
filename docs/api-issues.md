@@ -140,8 +140,8 @@
 
 ### Spec published 2026-11-01 (Lexicon v1.12, not released)
 
-The spec at lexicondj.com was rewritten on 2026-11-01. It describes v1.12, while the newest release is 1.11.15
-(changelog entry 2026-10-15). `docs/lexicon-api-docs.yaml` holds that spec as of 2026-11-04.
+The spec at lexicondj.com was rewritten on 2026-11-01. It describes v1.12, while the newest release then was 1.11.15
+(changelog entry 2026-10-15). v1.12.0 shipped on 2026-11-11; see the next section for what it does.
 
 In the spec but not in 1.11.15 (live-tested on 1.11.15 unless noted):
 
@@ -180,6 +180,113 @@ Corrected in this spec; the earlier entries above describe older specs:
   `Application_SetDanceability`, `Application_SetPopularity`, and `Application_SetHappiness` are in the enum.
 - The four hotkey-only `MusicPlayer_Tempomarker*` actions are out of the enum and documented as doing nothing.
 - `PluginRunActionByName`, `PluginRunAction_<pluginId>:<actionId>`, and `Direct2Cdj_*` are documented.
+
+### Added 2026-11-11 (Lexicon 1.12.0)
+
+v1.12.0 shipped on 2026-11-11. `docs/lexicon-api-docs.yaml` holds the spec published 2026-11-09, which differs from the
+2026-11-01 one only by `POST /v1/auth/pair`, the `bearerAuth` wording, and error codes `10` to `12`. The results below
+were live-tested on 1.12.0 (macOS) unless noted. Writes ran against an emptied library.
+
+Authentication:
+
+- A request from an app that was already allowed, sent from the same computer with only `X-Lexicon-App` and no token, is
+  let in (HTTP 200). The spec's error code `11` says such a request is refused with 409; the web page says local apps
+  are let in by name after approval. The web page matches 1.12.0. Not tested from another device, where the page says
+  the token is always required.
+- A request with an `Origin` header is answered at once with 401 and error code `9`, without a popup. The integration
+  harness relies on this to check whether the API is up.
+- A token in the query string is ignored (401, code `9`, with an `Origin` header). The page says tokens only work in the
+  `Authorization` header.
+- `POST /v1/auth/pair` returned the token in `data.token` 2.8 s after the user clicked Allow. The `X-Lexicon-Token`
+  response header was present.
+- Approvals are not stored in `main.db`: after `main.db` was replaced with an empty library, the paired token and the
+  name-only request were both still let in.
+- Without `X-Lexicon-App`, Lexicon names the app after the `User-Agent` product, so every `requests` script was the app
+  "python-requests". The client now always sends `X-Lexicon-App`.
+
+Control actions:
+
+- `Direct2Cdj_LoadDeck` is rejected with `Unknown control action` (code `5`), and `DeckConnect_LoadDeck` is accepted.
+  Lexicon 1.12 renamed DIRECT2CDJ to DeckConnect. The spec published 2026-11-09 still lists the ten `Direct2Cdj_*`
+  names; the 1.12.0 hotkey enum has `DeckConnect_LoadDeck`, `DeckConnect_LoadEmptyDeck`, and `DeckConnect_LoadDeck1` to
+  `DeckConnect_LoadDeck8` instead. `ControlAction` lists both.
+- The 1.12.0 hotkey enum has actions the spec does not list (app bundle; not live-tested): `Appearance_ZoomReset`,
+  `GhostCurator_RollDice`, `GhostCurator_ToggleFollow`, `GhostCurator_ToggleOverlay`, `GhostCurator_UseSuggestion1` to
+  `3`, `Incoming_AllDone`, `MusicPlayer_MetronomeSettings`, and `Navigation_SyncMobileApp`. `ControlAction` leaves them
+  out until they are tested; send them with `validation="off"`.
+- `Navigation_SidebarDashboard` is accepted. `POST /v1/control` answers `{}` on success.
+
+Track edits (`PATCH /v1/track`):
+
+- The response is `{"data": {"track": {...}}}`, the track as stored after the edit, including relative edits
+  (`playCount: "+2"` came back as 2). This replaces the 1.11 shapes `{"id": ..., "edits": ...}` and `{}` listed above.
+- A cue point's `activeLoop` must be a JSON boolean: `0` is rejected with
+  `'cuepoints' cue point 0 activeLoop must be true or false` (code `5`) and nothing is written. 1.11.15 accepted `0` and
+  `1`. A cue sent without `activeLoop` is stored as NULL and read back as `false` (seen from another client; not
+  re-tested here).
+- Every cuepoint edit replaces all cues, and every cue gets a new `id`. A cue or tempo marker sent without `data` is
+  stored with `data: null`, so an edit that does not send `data` back erases what a DJ app import stored there (for
+  example `{"traktor": {"displayOrder": 0, "originalType": "1", "repeats": -1}}`). A cue sent with `data` keeps it.
+- Two cues with the same `position` are accepted with HTTP 200, and only one is stored.
+- A cue `type` sent as the number `1` is rejected (`type must be one of 1, 2, 3, 4, 5`); the string `"1"` works.
+  `startTime` sent as an int is accepted. A loop (`type` `"5"`) without `endTime` is rejected.
+- Two tempo markers with the same `startTime` are rejected (`startTime 1 is used by another tempo marker`).
+- `tempomarkers` and `cuepoints` in one edit work in either order.
+- An unknown field is rejected (`'bogus' is not a valid track field`), a number field sent as a boolean is rejected
+  (`'energy' must be null or a number`), and `dateAdded` is not editable.
+- `archived` and `incoming` accept `0`/`1` and `true`/`false`. Track responses return them as `0`/`1`, except
+  `POST /v1/tracks`, which returns `true`/`false`. Setting `archived` sets `archivedSince`.
+- `color: null` is stored as an empty string (`"color": ""` in the response); `year: null` reads back as `0`.
+- `id` sent as a numeric string (`"2"`) is accepted. `id: "selected"` with nothing selected fails with code `113`.
+- `DELETE /v1/track` (singular) still returns code `4`; `DELETE /v1/tracks` works.
+
+`PATCH /v1/track/location`:
+
+- Returns `{"data": {"track": {...}}}`. The location is normalized: on macOS `/private/tmp/x.wav` is stored as
+  `/Volumes/Macintosh HD/private/tmp/x.wav`, and the relative path `relative.wav` became
+  `/Volumes/Macintosh HD/relative.wav`.
+- Another track's location fails with code `110`, a missing file with `111` (the message suggests
+  `checkFileExists: false`, which then succeeds), and an unknown track with `100`.
+
+Search (`GET /v1/search/tracks`), live-tested against a library of 9035 tracks:
+
+- `limit` and `offset` page the results; `total` is the full match count. With no `limit` the page is 1000. A `limit`
+  above 1000 is rejected.
+- A field that cannot be filtered is rejected: `'filter.bogus' is not allowed`. `importSource` and `archived` are
+  rejected the same way.
+- `filter.id` works as a number (`499`) or a string (`"499"`, `"12,48,153"`); an unknown id matches nothing.
+- `filter.fileType` matches the extension ignoring case (`WAV` finds `.wav` files). `fields` does not accept `fileType`
+  and tracks do not return it.
+- `filter.tags` `"none"` finds tracks without tags (728 of 9035).
+- `none` on `bpm` matched 0 tracks while `"0"` matched 1, and `none` on `year` matched 0 while `"0"` matched 903, so the
+  client keeps sending `"0"` for a number filter of `None`. The spec says `none` works on `bpm`.
+- A JSON `null` filter value (`{"artist": null}`) is ignored and matches the whole library. The client turns `None` into
+  `"NONE"`/`"0"`/`"none"` unless `validation="off"`.
+- Dates: `<=2026-11-01` and `<2026-11-01` both matched 8159 tracks, so `<=` still leaves that day out, as on 1.11.15.
+- `sort` works in the query string as URL-encoded JSON and in bracket form, and a sort without `dir` no longer crashes.
+
+Playlists, tags, player:
+
+- `PATCH /v1/playlist` with `position` inserts: moving the third of three playlists to `0` gave positions `0, 1, 2` in
+  the new order. The response is still `{"data": {"id": ...}}`.
+- `GET /v1/playlist` on a folder lists each track once. Changing or deleting the root folder fails with code `112`.
+- Adding a track that is already in a playlist with `PATCH /v1/playlist-tracks` returns `{}` and does not add it again.
+  Adding tracks to a folder fails with code `104`.
+- `PATCH /v1/tag-category` with `tags` reorders the category and moves tags in from other categories. Leaving out a tag
+  the category has fails with code `5` and an unknown tag with `109`. `position` moves the category and renumbers the
+  others. `color: null` is rejected (`'color' must be a string`).
+- `PATCH /v1/tag` with a `position` another tag has still fails with code `108`.
+- `POST`/`PATCH` for tags and categories still return the object at the top level, which the spec now documents.
+- `GET /v1/tracks/selected` and `GET /v1/playlists/selected` return `{"data": {"ids": [...]}}`.
+- `GET /v1/playing` after an eject still returns the old `currentTime` with `track: null`. For a library track it now
+  also returns `releaseDate` and `waveform`, which `GET /v1/track` does not.
+- `POST /v1/tracks` returns tracks with `cloudFileState`, `hasCuepoints`, and `hasTempomarkers`, and without `data`,
+  `extra1`, `extra2`, and several other fields that `GET /v1/track` returns.
+
+Fixed in 1.12.0 (entries above that no longer apply): `sort` in the query string, a sort without `dir`, duplicate
+`trackIds` for a folder, overlapping playlist positions, the non-functional `tags` on `PATCH /v1/tag-category`, no way
+to find untagged tracks with `filter.tags`, and ignored filter fields returning the whole library. Not re-tested: the
+HTTP 200 answer with only a `message` for an error without a code, which the spec's code `8` is meant to replace.
 
 ## Undocumented Fields in API Responses
 

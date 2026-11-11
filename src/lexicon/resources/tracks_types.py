@@ -17,9 +17,9 @@ import re
 import sys
 
 if sys.version_info >= (3, 13):
-    from typing import ReadOnly, Required
+    from typing import NotRequired, ReadOnly, Required
 else:
-    from typing_extensions import ReadOnly, Required
+    from typing_extensions import NotRequired, ReadOnly, Required
 
 from ._common_types import Color, _normalize_color
 
@@ -166,8 +166,12 @@ def _normalize_fields(
     return valid_fields, input_str_error, invalid_fields
 
 
-# Fields that can be filtered on by the search API endpoint
+# Fields that can be filtered on by the search API endpoint. Lexicon v1.12 rejects any other
+# field with a 400. "id" and "fileType" are new in v1.12; v1.11 ignores "id" and returns every
+# track, and rejects "fileType".
 FilterField = Literal[
+    "id",
+    "fileType",
     "title",
     "artist",
     "albumTitle",
@@ -221,6 +225,9 @@ def _normalize_filters(
             invalid_fields.append(str(fname))
             continue
         try:
+            if fname == "id":
+                filter_payload[fname] = _normalize_id_filter(value)
+                continue
             if fname in BOOL_FIELDS:
                 value = _normalize_bool(value, context="filter")  # pragma: no cover
             if fname in TEXT_FIELDS:
@@ -238,6 +245,35 @@ def _normalize_filters(
     invalid_fields = invalid_fields if invalid_fields else None
     value_errors = value_errors if value_errors else None
     return filter_payload, invalid_fields, value_errors
+
+
+def _normalize_id_filter(value: object) -> str:
+    """Normalize an ``id`` search filter to Lexicon's comma separated form.
+
+    Accepts a track ID, a sequence of track IDs, or a string of IDs separated by
+    commas, such as ``"12,48,153"``.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"Input must be a track ID or IDs. Given [{value!r}]")
+    if isinstance(value, int):
+        ids: list[object] = [value]
+    elif isinstance(value, str):
+        ids = [part.strip() for part in value.split(",")]
+    elif isinstance(value, Sequence):
+        ids = list(value)
+    else:
+        raise ValueError(f"Input must be a track ID or IDs. Given [{type(value)}]")
+    normalized: list[str] = []
+    for track_id in ids:
+        if isinstance(track_id, str) and track_id.isdecimal():
+            track_id = int(track_id)
+        if isinstance(track_id, bool) or not isinstance(track_id, int) or track_id < 1:
+            raise ValueError(f"Track IDs must be positive ints. Given [{value!r}]")
+        if str(track_id) not in normalized:
+            normalized.append(str(track_id))
+    if not normalized:
+        raise ValueError("No track IDs given")
+    return ",".join(normalized)
 
 
 # Fields that can be edited
@@ -469,6 +505,7 @@ TextField = Literal[
     "genre",
     "color",
     "location",
+    "fileType",
     "importSource",
     "extra1",
     "extra2",
@@ -607,9 +644,13 @@ TAG_FIELDS: tuple[TagField, ...] = get_args(TagField)
 def _normalize_tag_filter(
     value: object,
 ) -> str:
-    """Normalize tag filter string."""
+    """Normalize tag filter string. ``None`` finds tracks without any tag.
+
+    Lexicon v1.12 reads ``"none"`` as "no tags", unless a tag is labeled None.
+    v1.11 returned no tracks for it.
+    """
     if value is None:
-        raise ValueError("API does not support filtering on absence of tags")
+        return "none"
     if not isinstance(value, str):
         raise ValueError(f"Input must be [str]. Given [{type(value)}]")
     tag_match = re.match(r"^\s*~?\s*!?[^,]+(?:\s*,\s*!?[^,]+)*\s*$", value)
@@ -645,26 +686,37 @@ CUEPOINT_TYPE_NAMES: tuple[CuePointTypeName, ...] = get_args(CuePointTypeName)
 
 # Response shape for track resource responses
 class CuePointResponse(TypedDict):
-    """Readonly cuepoint dict returned in track responses."""
+    """Readonly cuepoint dict returned in track responses.
+
+    ``data`` holds what the DJ app the cue was imported from stored, such as
+    ``{"traktor": {...}}``, or ``None``. Lexicon replaces every cue on a cuepoint
+    edit and clears ``data`` on any cue sent without it, so send it back unchanged
+    to keep it. ``id`` changes on every edit.
+    """
 
     id: ReadOnly[int]
+    trackId: ReadOnly[int]
     name: ReadOnly[str]
     type: ReadOnly[CuePointTypeCode]
     startTime: ReadOnly[float]
     endTime: ReadOnly[float | None]
     activeLoop: ReadOnly[bool]
     position: ReadOnly[int]
-    color: ReadOnly[Color]
+    color: ReadOnly[Color | None]
+    data: ReadOnly[dict | None]
 
 
 class TempoMarkerResponse(TypedDict):
-    """Readonly tempo marker dict returned in track responses."""
+    """Readonly tempo marker dict returned in track responses.
+
+    ``data`` works as on :class:`CuePointResponse`: send it back to keep it.
+    """
 
     id: ReadOnly[int]
     trackId: ReadOnly[int]
     startTime: ReadOnly[float]
     bpm: ReadOnly[float]
-    data: ReadOnly[dict]
+    data: ReadOnly[dict | None]
 
 
 class TrackResponse(TypedDict, total=False):
@@ -698,7 +750,8 @@ class TrackResponse(TypedDict, total=False):
     dateModified: ReadOnly[str]
     sizeBytes: ReadOnly[int]
     sampleRate: ReadOnly[int]
-    #    fileType: ReadOnly[str] - not currently returned by API
+    # fileType is a search filter only: Lexicon v1.12 does not return it and rejects
+    # it in `fields`.
     trackNumber: ReadOnly[int]
     energy: ReadOnly[int]
     danceability: ReadOnly[int]
@@ -711,18 +764,27 @@ class TrackResponse(TypedDict, total=False):
     locationUnique: ReadOnly[str]
     tempomarkers: ReadOnly[list[TempoMarkerResponse]]
     cuepoints: ReadOnly[list[CuePointResponse]]
-    incoming: ReadOnly[bool]
-    archived: ReadOnly[bool]
+    # 0 or 1 from most endpoints; POST /tracks returns booleans.
+    incoming: ReadOnly[bool | int]
+    archived: ReadOnly[bool | int]
     archivedSince: ReadOnly[str]
     beatshiftCase: ReadOnly[str]
     fingerprint: ReadOnly[str]
     streamingService: ReadOnly[str]
     streamingId: ReadOnly[str]
+    # Ids the DJ apps the track was imported from gave it, such as
+    # {"rekordbox": {"trackId": ...}}.
+    data: ReadOnly[dict | None]
 
 
 # Payload shape for updating track resources
 class CuePointUpdate(TypedDict, total=False):
-    """Editable cuepoint dict used when updating tracks."""
+    """Editable cuepoint dict used when updating tracks.
+
+    A cuepoint edit replaces every cue on the track. Pass ``data`` back from
+    :class:`CuePointResponse` to keep what the DJ app it came from stored;
+    Lexicon clears it on a cue sent without it.
+    """
 
     position: Required[int]
     startTime: Required[float]
@@ -731,6 +793,7 @@ class CuePointUpdate(TypedDict, total=False):
     activeLoop: bool
     endTime: float
     color: Color | None
+    data: dict | None
 
 
 def _normalize_cuepoint_type(cuepoint_type: CuePointType) -> CuePointTypeCode:
@@ -772,6 +835,7 @@ def _normalize_cuepoints(
         errors.fatal.append(f"Cuepoints must be a list. Given: [{type(cuepoints)}]")
         return normalized_cuepoints, errors
 
+    seen_positions: set[int] = set()
     for cuepoint in cuepoints:
         if not isinstance(cuepoint, dict):
             errors.dropped.append(f"Invalid cuepoint entry: {cuepoint}")
@@ -783,14 +847,21 @@ def _normalize_cuepoints(
             continue
 
         position = cuepoint["position"]
-        if not isinstance(position, int):
+        if isinstance(position, bool) or not isinstance(position, int):
             errors.dropped.append(f"Positions must be int: {type(position)}")
             continue
+        # Lexicon v1.12 keeps one cue per position and silently drops the rest.
+        if position in seen_positions:
+            errors.dropped.append(f"Duplicate position: {position}")
+            continue
+        seen_positions.add(position)
         cuepoint_payload["position"] = position
 
-        startTime = cuepoint["startTime"]
-        if not isinstance(startTime, float):
-            errors.dropped.append(f"startTime must be float: {type(startTime)}")
+        startTime = _seconds(cuepoint["startTime"])
+        if startTime is None:
+            errors.dropped.append(
+                f"startTime must be a number: {type(cuepoint['startTime'])}"
+            )
             continue
         cuepoint_payload["startTime"] = startTime
 
@@ -819,10 +890,10 @@ def _normalize_cuepoints(
                 errors.partial.append(str(exc))
 
         endTime = cuepoint.get("endTime")
-        if endTime is not None and not isinstance(endTime, float):
-            errors.partial.append(f"endTime must be a float: {endTime}")
+        if endTime is not None and _seconds(endTime) is None:
+            errors.partial.append(f"endTime must be a number: {endTime}")
         elif endTime is not None:
-            cuepoint_payload["endTime"] = endTime
+            cuepoint_payload["endTime"] = cast(float, _seconds(endTime))
 
         color = cuepoint.get("color")
         if color is not None:
@@ -831,15 +902,35 @@ def _normalize_cuepoints(
             except ValueError as exc:
                 errors.partial.append(str(exc))
 
+        if "data" in cuepoint:
+            data = cuepoint["data"]
+            if data is None or isinstance(data, dict):
+                cuepoint_payload["data"] = data
+            else:
+                errors.partial.append(f"data must be a dict or None: {type(data)}")
+
         normalized_cuepoints.append(cuepoint_payload)
     return normalized_cuepoints, errors
 
 
+def _seconds(value: object) -> float | None:
+    """Return a time in seconds as a float, or None when it is not a number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 class TempoMarkerUpdate(TypedDict):
-    """Editable tempo marker dict used when updating tracks."""
+    """Editable tempo marker dict used when updating tracks.
+
+    A tempomarker edit replaces every marker on the track. Pass ``data`` back from
+    :class:`TempoMarkerResponse` to keep it; Lexicon clears it on a marker sent
+    without it.
+    """
 
     startTime: float
     bpm: float | int
+    data: NotRequired[dict | None]
 
 
 @dataclass
@@ -871,9 +962,11 @@ def _normalize_tempomarkers(
             errors.dropped.append(f"Missing required keys: {missing_required}")
             continue
 
-        start_time = marker["startTime"]
-        if not isinstance(start_time, float):
-            errors.dropped.append(f"startTime must be float: {type(start_time)}")
+        start_time = _seconds(marker["startTime"])
+        if start_time is None:
+            errors.dropped.append(
+                f"startTime must be a number: {type(marker['startTime'])}"
+            )
             continue
         if start_time in seen_start_times:
             errors.dropped.append(f"Duplicate startTime: {start_time}")
@@ -881,11 +974,19 @@ def _normalize_tempomarkers(
         seen_start_times.add(start_time)
 
         bpm = marker["bpm"]
-        if not isinstance(bpm, (float, int)):
+        if isinstance(bpm, bool) or not isinstance(bpm, (float, int)):
             errors.dropped.append(f"bpm must be float or int: {type(bpm)}")
             continue
 
-        normalized_tempomarkers.append({"startTime": start_time, "bpm": bpm})
+        normalized: TempoMarkerUpdate = {"startTime": start_time, "bpm": bpm}
+        if "data" in marker:
+            data = marker["data"]
+            if data is None or isinstance(data, dict):
+                normalized["data"] = data
+            else:
+                errors.dropped.append(f"data must be a dict or None: {type(data)}")
+                continue
+        normalized_tempomarkers.append(normalized)
     return normalized_tempomarkers, errors
 
 
