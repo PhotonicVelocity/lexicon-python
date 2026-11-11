@@ -16,7 +16,57 @@ tags:
 - name: Custom Tag
 - name: Control
 - name: Music Player
+- name: Authentication
 paths:
+  "/auth/pair":
+    post:
+      tags:
+        - Authentication
+      summary: Ask the user for access and get a token
+      description: >
+        Starting in Lexicon v1.12. Lexicon shows the user a popup asking whether your app may use the API, and this request waits for the answer, up to two minutes. When the user allows your app, the response holds a token for your app: send it with every request from then on, in the `Authorization: Bearer` header. The token is also in the `X-Lexicon-Token` response header.
+
+
+        Call it once and store the token: Lexicon asks once per app name. When an app with this name is already allowed, the request is refused with HTTP status 409 and error code `11` without asking; the user has to remove your app in the settings before it can pair again. When the user blocks your app the request is refused with HTTP status 403 and error code `6`. When they close the popup without choosing, or do not answer in time, it is refused with 401 and error code `10`; Lexicon then does not ask about the same app again for a minute. A web page cannot pair, see Authentication at the top of this page.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 64
+                  description: The name of your app, as the user sees it in the popup and in the Lexicon settings. Without it Lexicon uses the `X-Lexicon-App` header, then the product in the `User-Agent` header.
+            example:
+              name: My Lexicon Tool
+      responses:
+        '200':
+          description: The user allowed your app
+          headers:
+            X-Lexicon-Token:
+              description: The same token as in the body
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: The token for your app. Lexicon only stores a hash of it, so it cannot show it again
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+
   "/track":
     get:
       tags:
@@ -1207,7 +1257,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "Starting in Lexicon v1.12: the API token from the Lexicon settings under Integrations. Only needed when Require Authentication is on."
+      description: "Starting in Lexicon v1.12: the token Lexicon gave your app when the user allowed it (see POST /auth/pair), or the API token from the Lexicon settings under Local API. Requests without a token ask the user for access, see Authentication at the top of this page."
   schemas:
     Track:
       type: object
@@ -2386,15 +2436,18 @@ components:
           type: integer
           example: 5
           description: |
-            Most errors come with HTTP status 400. Codes `6` and `9` come with 401 and code `8` with 500.
+            Most errors come with HTTP status 400. Codes `9` and `10` come with 401, code `6` with 403 (401 in Lexicon v1.11 and older), code `11` with 409, code `12` with 413 and code `8` with 500.
 
             - `1` - The body is not valid JSON
             - `2` - Too many requests that change the library are waiting their turn. Older versions of Lexicon also return it for any request sent while another is still running
             - `4` - The endpoint does not exist, or not with this HTTP method
             - `5` - Invalid input, the message says which parameter and why
-            - `6` - The app in `app` is not allowed to use the API, see the Lexicon settings
+            - `6` - The user blocked your app in Lexicon. In Lexicon v1.11 and older: the app in `app` is not allowed to use the API
             - `8` - Something went wrong inside Lexicon while handling the request. Please report it with the message
-            - `9` - The API token is missing or wrong, see Authentication at the top of this page. Starting in Lexicon v1.12
+            - `9` - The token is missing or wrong, and Lexicon did not ask the user: the request came from a web page, or did not say which app sent it. See Authentication at the top of this page. Starting in Lexicon v1.12
+            - `10` - Your app needs the user's approval: the user has not answered the popup yet, or closed it without choosing. Send the request again once they have, or use `POST /auth/pair`. Starting in Lexicon v1.12
+            - `11` - An app with this name is already allowed, and the request did not send its token. Lexicon does not ask the user again about a name it already allowed: send the token, or have the user remove the app in the Lexicon settings so it can ask again. Starting in Lexicon v1.12
+            - `12` - The body is too large: 64 KB for a request from another device before it is let in, 100 MB otherwise. Starting in Lexicon v1.12
             - `100` - Track does not exist
             - `101` - Playlist does not exist
             - `102` - Parent playlist is not a folder
