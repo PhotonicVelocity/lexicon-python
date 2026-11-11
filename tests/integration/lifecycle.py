@@ -45,11 +45,23 @@ POLL_INTERVAL = 1
 DB_SIDECAR_SUFFIXES = ("-wal", "-shm")
 
 
+# Lexicon v1.12 holds a request from an app the user has not answered for while it
+# shows an approval popup, so a plain probe would time out against a running app.
+# A request with an Origin header counts as coming from a web page: v1.12 answers it
+# at once with HTTP 401 and error code 9 and never shows the popup, and v1.11 and
+# older ignore the header.
+_PROBE_HEADERS = {"Origin": "http://localhost"}
+
+
 def is_api_ready() -> bool:
-    """Check if the Lexicon API is responding."""
+    """Check if the Lexicon API is answering HTTP requests.
+
+    Any HTTP response counts, including v1.12's 401 for the probe, because the
+    question is whether the server is up, not whether this probe is let in.
+    """
     try:
-        resp = requests.get(API_URL, timeout=2)
-        return resp.status_code in (200, 400)
+        requests.get(API_URL, headers=_PROBE_HEADERS, timeout=2)
+        return True
     except (requests.ConnectionError, requests.Timeout):
         return False
 
