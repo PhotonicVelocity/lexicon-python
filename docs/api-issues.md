@@ -288,6 +288,13 @@ Fixed in 1.12.0 (entries above that no longer apply): `sort` in the query string
 to find untagged tracks with `filter.tags`, and ignored filter fields returning the whole library. Not re-tested: the
 HTTP 200 answer with only a `message` for an error without a code, which the spec's code `8` is meant to replace.
 
+### Checked 2026-11-13 (Lexicon 1.12.1)
+
+1.12.1 does not change the Local API. The spec at lexicondj.com is still the 2026-11-09 publication, the API code in the
+app bundle matches 1.12.0, and the read-only requests from the section above give the same results. Writes were not
+re-tested. Lexicon plugins may now list `127.0.0.1` and `localhost` in their network permissions, which 1.12.0 rejected;
+that does not affect the Local API.
+
 ## Undocumented Fields in API Responses
 
 - `GET /v1/track`
