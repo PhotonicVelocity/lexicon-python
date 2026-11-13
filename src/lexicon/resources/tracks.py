@@ -7,6 +7,7 @@ from typing import Optional, Sequence, Literal, Mapping, cast
 
 from .base import Resource
 from .tracks_types import (
+    TRACK_FIELDS,
     TRACK_SOURCES,
     FilterField,
     SortInput,
@@ -431,8 +432,11 @@ class Tracks(Resource):
                 self._logger.warning("Skipping search: no valid filters remain.")
                 return None
 
+            # Return the filtered fields too, except filter-only ones such as fileType,
+            # which Lexicon rejects in `fields`.
             filter_fields = cast(
-                list[TrackField], [field for field in filter_payload.keys()]
+                list[TrackField],
+                [field for field in filter_payload if field in TRACK_FIELDS],
             )
             payload["filter"] = filter_payload
             id_filter = filter_payload.get("id")

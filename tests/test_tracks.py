@@ -2047,6 +2047,20 @@ class Lexicon112TrackTests(unittest.TestCase):
         self.assertEqual(payload, {"fileType": "flac"})
         self.assertIsNone(errors)
 
+    def test_search_file_type_filter_is_not_returned(self):
+        # fileType is filter-only: Lexicon rejects it in `fields`, so search() must
+        # not add it to the returned fields the way it adds other filter fields.
+        with patch.object(
+            self.tracks, "_request", return_value=self._page([3], 1)
+        ) as mocked:
+            result = self.tracks.search(
+                {"fileType": "flac", "artist": "a"},
+                fields=["id"],
+                validation="strict",
+            )
+        self.assertEqual(result, [{"id": 3}])
+        self.assertEqual(mocked.call_args.kwargs["json"]["fields"], ["id", "artist"])
+
     # --- cue point and tempo marker payloads ---
 
     def test_cuepoint_data_is_kept(self):
